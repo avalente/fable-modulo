@@ -247,8 +247,11 @@ module FormFieldModel =
 
     // helpers
 
+    let inline update<'f, 't> text (item : FormFieldModel<'f, 't>) =
+        {item with Text = text; Value = item.Parser text}
+
     let inline updateForm<'f, 't> (form : 'f) (item : FormFieldModel<'f, 't>) text =
-        let item' = {item with Text = text; Value = item.Parser text} 
+        let item' = update<'f, 't> text item
         (item' :> IFormFieldModel<'f, 't>).UpdateForm form
     
 module FormCheckboxModel =
@@ -259,6 +262,9 @@ module FormCheckboxModel =
             Validator = None
             Label = None
         }
+
+    let inline update<'f> value (item : FormCheckboxModel<'f>) =
+        {item with Value = Ok value}
 
     let withValidator validator (item : FormCheckboxModel<_>) = {item with Validator = Some validator}
     let withLabel label (item : FormCheckboxModel<_>) = {item with Label = Some label}
@@ -288,6 +294,9 @@ module FormListModel =
 
         create<'f, 't> initialValue values (box >> string) updater
 
+    let inline update<'f, 't> value (item : FormListModel<'f, 't>) =
+        {item with Value = Ok value}
+    
     let withValidator validator (item : FormListModel<_, _>) = {item with Validator = Some validator}
     let withLabel label (item : FormListModel<_, _>) = {item with Label = Some label}
     let withSerializer serializer item = {item with Serializer = serializer}
@@ -354,7 +363,7 @@ module View =
         ]
 
         let optionProps' o = optionProps @ [
-            Value (item.Serializer o)
+            HTMLAttr.Value (item.Serializer o)
         ]
 
         select props' [
@@ -370,6 +379,9 @@ module View =
     let basicSelect<'f, 't> (form : 'f) (item : FormListModel<'f, 't>) messageDispatcher =
         selectBase form item messageDispatcher [] []
         
+let inline updateForm<'f, 't> form (field : IFormFieldModel<'f, 't>) =
+    field.UpdateForm form
+
 /// Validate the form. Return a list of couples (<field name>, <error message>) if there is at least one error, None if the form is valid
 let inline validate<'f> (f : 'f) =
     let t = typeof<'f>
