@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+    <PropertyGroup>
+    <PackageId>Fable.Modulo</PackageId>
+    <Title>Fable.Modulo</Title>
+    <Version>1.0.0</Version>
+    <Authors>Angelantonio Valente</Authors>
+    <Description>Form manager for Fable</Description>
+    <PackageProjectUrl>https://github.com/avalente/fable-modulo</PackageProjectUrl>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/avalente/fable-modulo</RepositoryUrl>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+
+  <ItemGroup>
+    <Content Include="*.fsproj; **\*.fs; **\*.fsi" PackagePath="fable\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath=""/>
+    <None Include="LICENSE.txt" Pack="true" PackagePath=""/>
+
+    <PackageReference Include="Fable.Core" Version="3" />
+    <PackageReference Include="Fable.React" Version="8" />
+    <PackageReference Update="FSharp.Core" Version="4.7.*" />
+
+    <Compile Include="Library.fs" />
+  </ItemGroup>
+
+</Project>
