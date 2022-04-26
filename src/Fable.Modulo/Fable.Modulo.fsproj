@@ -27,8 +27,8 @@
     <None Include="README.md" Pack="true" PackagePath=""/>
     <None Include="LICENSE.txt" Pack="true" PackagePath=""/>
 
-    <PackageReference Include="Fable.Core" Version="3" />
-    <PackageReference Include="Fable.React" Version="8" />
+    <PackageReference Include="Fable.Core" Version="3.*" />
+    <PackageReference Include="Fable.React" Version="8.*" />
     <PackageReference Update="FSharp.Core" Version="4.7.*" />
 
     <Compile Include="Library.fs" />
