@@ -15,6 +15,11 @@ module Parsers =
     /// Parse a string. Always successful.
     let string x = Ok x
 
+    /// Parse a non-empty string
+    let nonEmptyString x =
+        if String.IsNullOrWhiteSpace x then Error "Empty string not allowed"
+        else Ok x
+
     /// Parse an optional string. Always successful.
     let stringOption = optionParser string
 
@@ -23,7 +28,6 @@ module Parsers =
         match Int32.TryParse x with
         | false, _ -> Error "Invalid integer"
         | true, x -> Ok x
-
 
     let intOption = optionParser int
 
@@ -151,7 +155,7 @@ type FormCheckboxModel<'f> =
             item.Updater item form
 
 /// Model for a "select"-like element
-type FormListModel<'f, 't> =
+type FormListModel<'f, 't when 't : equality> =
     {
         /// The available values
         Values : 't[]
@@ -160,15 +164,15 @@ type FormListModel<'f, 't> =
         /// The current item's value
         Value : Result<'t, string>
         /// A function used to serialize the value to a string that is stored in the underlying "select"/"option"
-        Serializer : 't -> string
-        /// A function used to deserialize the string stored in the underlying "select"/"option"
-        Deserializer : string -> 't
-        /// Gets a string representation of the underlying value
         Updater : FormListModel<'f, 't> -> 'f -> 'f
         /// Validate the field's value, possibly against the whole form
         Validator : ('f -> 't -> Result<'t, string>) option
         /// The field's label. Useful for auto-generation
         Label : string option
+        /// Adds an empty element if true
+        AddEmptySelection : bool
+        /// The error to display when no selection has been made
+        EmptyErrorString : string
     }
 
     interface IFormFieldModel<'f, 't> with
@@ -200,6 +204,7 @@ module FormFieldModel =
 
     let withValidator validator (item : FormFieldModel<_, _>) = {item with Validator = Some validator}
     let withLabel label (item : FormFieldModel<_, _>) = {item with Label = Some label}
+    let withFormatter formatter (item : FormFieldModel<_, _>) = {item with Formatter = formatter}
 
     // constructors
 
@@ -270,9 +275,20 @@ module FormCheckboxModel =
     let withLabel label (item : FormCheckboxModel<_>) = {item with Label = Some label}
 
 module FormListModel =
-    open Fable.Core.JS
+    let inline create<'f, 't when 't : equality> initialValue (availableValues : seq<'t>) (labelForValue : 't -> string) (updater : FormListModel<'f, 't> -> 'f -> 'f) =
+        // check that the initial value is contained in the available values
+        match initialValue with
+        | Ok x when availableValues |> Seq.contains x |> not -> failwithf "Bad initial value"
+        | _ -> ()
 
-    let inline create<'f, 't> initialValue (availableValues : seq<'t>) (labelForValue : 't -> string) (updater : FormListModel<'f, 't> -> 'f -> 'f) =
+        // by default adds an empty invalid selection if the data type is not Option<_>
+        let addEmpty = typedefof<'t> <> typedefof<Option<_>>
+
+        let emptyErrorString =
+            match initialValue with
+            | Error e -> e
+            | _ -> "please choose a value"
+
         {
             Values = availableValues |> Seq.toArray
             ValueLabel = labelForValue
@@ -280,11 +296,11 @@ module FormListModel =
             Updater = updater
             Validator = None
             Label = None
-            Serializer = JSON.stringify
-            Deserializer = (fun x -> (if String.IsNullOrEmpty x then null else JSON.parse(x)) |> unbox<'t>)
+            AddEmptySelection = addEmpty
+            EmptyErrorString = emptyErrorString
         }
 
-    let inline createOfDU<'f, 't> initialValue (duType : Type) updater =
+    let inline createOfDU<'f, 't when 't : equality> initialValue (duType : Type) updater =
         let values = 
             Reflection.FSharpType.GetUnionCases(duType)
             |> Seq.map (fun x ->
@@ -294,14 +310,21 @@ module FormListModel =
 
         create<'f, 't> initialValue values (box >> string) updater
 
-    let inline update<'f, 't> value (item : FormListModel<'f, 't>) =
+    let inline update<'f, 't when 't : equality> value (item : FormListModel<'f, 't>) =
         {item with Value = Ok value}
     
     let withValidator validator (item : FormListModel<_, _>) = {item with Validator = Some validator}
     let withLabel label (item : FormListModel<_, _>) = {item with Label = Some label}
-    let withSerializer serializer item = {item with Serializer = serializer}
-    let withDeserializer deserializer item = {item with Deserializer = deserializer}
     let withValueLebel f item = {item with ValueLabel = f}
+    let withEmptySelection add item = {item with AddEmptySelection = add}
+    let withEmptyErrorString error item = {item with EmptyErrorString = error}
+    let withValues values item = 
+        // check that the initial value is contained in the available values
+        let newValue =
+            match item.Value with
+            | Ok x when values |> Seq.contains x |> not -> Error "choose an item"
+            | e -> e
+        {item with Values = values |> Seq.toArray; Value = newValue}
 
 // helpers
 
@@ -352,23 +375,32 @@ module View =
             )
         ]
 
-    let selectBase<'f, 't> (form : 'f) (item : FormListModel<'f, 't>) messageDispatcher (selectProps : IHTMLProp list) (optionProps : IHTMLProp list) =
+    let selectBase<'f, 't when 't : equality> (form : 'f) (item : FormListModel<'f, 't>) messageDispatcher (selectProps : IHTMLProp list) (optionProps : IHTMLProp list) =
         let props' =  selectProps @ [
-            DefaultValue (match item.Value with | Ok x -> item.Serializer x | Error e -> "")
+            DefaultValue (match item.Value with | Ok x -> item.Values |> Seq.findIndex (fun v -> v = x) |> string | Error e -> "")
             OnChange (fun ev -> 
-                let value = item.Deserializer ev.Value
-                let item = {item with Value = Ok value}
+                let value = 
+                    if String.IsNullOrWhiteSpace ev.Value then
+                        Error item.EmptyErrorString
+                    else
+                        Ok item.Values.[Int32.Parse ev.Value]
+                let item = {item with Value = value}
                 (item :> IFormFieldModel<_, _>).UpdateForm form |> messageDispatcher
             )
         ]
 
-        let optionProps' o = optionProps @ [
-            HTMLAttr.Value (item.Serializer o)
+        let optionProps' i = optionProps @ [
+            HTMLAttr.Value (string i)
         ]
 
         select props' [
-            for o in item.Values do
-                option (optionProps' o) [
+            if item.AddEmptySelection then
+                option (optionProps @ [
+                    HTMLAttr.Value ""
+                ]) [str ""]
+
+            for i, o in Seq.indexed item.Values do
+                option (optionProps' i) [
                     str (item.ValueLabel o)
                 ]
         ]
@@ -376,7 +408,7 @@ module View =
     let basicCheckbox<'f> (form : 'f) (item : FormCheckboxModel<'f>) messageDispatcher =
         checkboxBase form item messageDispatcher []
         
-    let basicSelect<'f, 't> (form : 'f) (item : FormListModel<'f, 't>) messageDispatcher =
+    let basicSelect<'f, 't when 't : equality> (form : 'f) (item : FormListModel<'f, 't>) messageDispatcher =
         selectBase form item messageDispatcher [] []
         
 let inline updateForm<'f, 't> form (field : IFormFieldModel<'f, 't>) =

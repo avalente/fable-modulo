@@ -7,11 +7,16 @@ open Fable.React
 open Fable.React.Props
 open Fable.Modulo
 
-
 type MyType =
     | First
     | Second
     | Third
+
+type MyOtherType =
+    {
+        Key : MyType
+        Description : string
+    }
 
 module MyType =
     let parse (x : string) =
@@ -38,6 +43,7 @@ and Form =
         Bool : FormCheckboxModel<Form>
         Choice : FormListModel<Form, MyType>
         ChoiceOption : FormListModel<Form, MyType option>
+        ChoiceComplex : FormListModel<Form, MyOtherType>
     }
 
 type AutoField<'t> = FormFieldModel<AutoForm, 't>
@@ -90,6 +96,12 @@ let init _ =
                     [None; Some First; Some Second; Some Third] 
                     (function | None -> ""; | Some First -> "first item" | Some Second -> "second item" | Some Third -> "third item") 
                     (fun item form -> {form with ChoiceOption = item})
+            ChoiceComplex = 
+                FormListModel.create
+                    (Error "select an option")
+                    [{Key = First; Description = "first option"}; {Key = Second; Description = "second option"}; {Key = Third; Description = "third option"}]
+                    (fun x -> x.Description)
+                    (fun item form -> {form with ChoiceComplex = item})
         }
 
     let autoForm = 
@@ -263,6 +275,12 @@ let view model dispatch =
                         View.basicSelect model.Form model.Form.ChoiceOption (UpdateForm >> dispatch)
                     ]
 
+                    fieldset [] [
+                        legend [] [str "Choice field with complex data"]
+
+                        View.basicSelect model.Form model.Form.ChoiceComplex (UpdateForm >> dispatch)
+                    ]
+
                 ]
 
                 div [] [
@@ -317,6 +335,9 @@ let view model dispatch =
 
                         dt [] [str "Choice option"]
                         dd [] [model.Form.ChoiceOption |> formatField]
+
+                        dt [] [str "Choice with complex data"]
+                        dd [] [model.Form.ChoiceComplex |> formatField]
                     ]
                 ]
 

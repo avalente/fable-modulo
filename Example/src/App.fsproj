@@ -12,6 +12,6 @@
     <PackageReference Include="Fable.Elmish.React" Version="3.0.1" />
     <PackageReference Include="Fable.Elmish.Debugger" Version="3.0.1" />
     <PackageReference Include="Fable.React" Version="8.0.1" />
-    <PackageReference Include="Fable.Modulo" Version="1.0" />
+    <PackageReference Include="Fable.Modulo" Version="1.*" />
   </ItemGroup>
 </Project>
