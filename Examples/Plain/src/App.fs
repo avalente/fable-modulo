@@ -24,47 +24,38 @@ module MyType =
         | "first" -> Ok First
         | "second" -> Ok Second
         | "third" -> Ok Third
-        | e -> Error (sprintf "Invalid value: '%s'" e)
+        | e -> Error (sprintf "Invalid value: '%s' (try 'first', 'second' or 'third')" e)
 
     let formatter (x : MyType) = string x
 
-type Field<'t> = FormFieldModel<Form, 't>
+type Input<'t> = FormInputModel<Form, 't>
+and Select<'t> = FormSelectModel<Form, 't>
+and Checkbox = FormCheckboxModel<Form>
 and Form =
     {
-        String : Field<string>
-        StringOption : Field<string option>
-        StringWithValidator : Field<string>
-        Int : Field<int>
-        Float : Field<float>
-        DateOption : Field<DateTime option>
-        Custom : Field<MyType>
+        String : Input<string>
+        StringOption : Input<string option>
+        StringWithValidator : Input<string>
+        Int : Input<int>
+        Float : Input<float>
+        DateOption : Input<DateTime option>
+        Custom : Input<MyType>
         NotAField : Option<unit>
-        DateTime : Field<DateTimeOffset>
-        Bool : FormCheckboxModel<Form>
-        Choice : FormListModel<Form, MyType>
-        ChoiceOption : FormListModel<Form, MyType option>
-        ChoiceComplex : FormListModel<Form, MyOtherType>
-    }
-
-type AutoField<'t> = FormFieldModel<AutoForm, 't>
-and AutoForm =
-    {
-        String : AutoField<string>
-        FloatOption : AutoField<float option>
+        DateTime : Input<DateTimeOffset>
+        Bool : Checkbox
+        Choice : Select<MyType>
+        ChoiceOption : Select<MyType option>
+        ChoiceComplex : Select<MyOtherType>
     }
 
 type Model =
     {
         Form : Form
-        AutoForm : AutoForm
         ValidationError : string option
-        AutoFormValidationError : string option
     }
 
 type Msg = 
     | UpdateForm of Form
-    | UpdateAutoForm of AutoForm
-    | ValidateAutoForm
 
 let transformValidation x =
     x |> Option.map (fun e -> e |> List.map(fun (k, v) -> sprintf "%s: %s" k v) |> String.concat ", ")
@@ -72,53 +63,42 @@ let transformValidation x =
 let init _ =
     let form =
         {
-            String = FormFieldModel.stringField (Ok "") (fun item form -> {form with String = item})
-            StringOption = FormFieldModel.stringOptionField (Ok None) (fun item form -> {form with StringOption = item})
+            String = FormInputModel.stringField (Ok "") (fun item form -> {form with String = item})
+            StringOption = FormInputModel.stringOptionField (Ok None) (fun item form -> {form with StringOption = item})
             StringWithValidator = 
-                FormFieldModel.stringField (Ok "") (fun item form -> {form with StringWithValidator = item})
-                |> FormFieldModel.withValidator (fun form value -> 
+                FormInputModel.stringField (Ok "") (fun item form -> {form with StringWithValidator = item})
+                |> FormInputModel.withValidator (fun form value -> 
                     if value |> Seq.forall(Char.IsUpper) then
                         Ok value
                     else
                         Error "this field should be UPPERCASE"
                 )
-            Int = FormFieldModel.intField (Ok 0) (fun item form -> {form with Int = item})
-            Float = FormFieldModel.floatField (Error "please fill me") (fun item form -> {form with Float = item})
-            DateOption = FormFieldModel.dateOptionField (Ok None) (fun item form -> {form with DateOption = item})
-            Custom = FormFieldModel.create' (Error "please fill me") MyType.parse MyType.formatter (fun item form -> {form with Custom = item})
+            Int = FormInputModel.intField (Ok 0) (fun item form -> {form with Int = item})
+            Float = FormInputModel.floatField (Error "please fill me") (fun item form -> {form with Float = item})
+            DateOption = FormInputModel.dateOptionField (Ok None) (fun item form -> {form with DateOption = item})
+            Custom = FormInputModel.create' (Error "please fill me") MyType.parse MyType.formatter (fun item form -> {form with Custom = item})
             NotAField = None
-            DateTime = FormFieldModel.dateTimeField (Error "please fill me") (fun item form -> {form with DateTime = item})
+            DateTime = FormInputModel.dateTimeField (Error "please fill me") (fun item form -> {form with DateTime = item})
             Bool = FormCheckboxModel.create (Ok false) (fun item form -> {form with Bool = item})
-            Choice = FormListModel.createOfDU (Error "choose one item") typeof<MyType> (fun item form -> {form with Choice = item})
+            Choice = FormSelectModel.createOfDU (Error "choose one item") typeof<MyType> (fun item form -> {form with Choice = item})
             ChoiceOption = 
-                FormListModel.create 
+                FormSelectModel.create 
                     (Ok None) 
                     [None; Some First; Some Second; Some Third] 
                     (function | None -> ""; | Some First -> "first item" | Some Second -> "second item" | Some Third -> "third item") 
                     (fun item form -> {form with ChoiceOption = item})
             ChoiceComplex = 
-                FormListModel.create
+                FormSelectModel.create
                     (Error "select an option")
                     [{Key = First; Description = "first option"}; {Key = Second; Description = "second option"}; {Key = Third; Description = "third option"}]
                     (fun x -> x.Description)
                     (fun item form -> {form with ChoiceComplex = item})
         }
 
-    let autoForm = 
-        let inline f (value : Result<'t, string>) label = Auto.field'<AutoForm, 't> value label
-
-        {
-            String = f (Ok "") "A field taking a string"
-            FloatOption = f (Error "please fill me") "A float value" |> FormFieldModel.withValidator (fun _ v -> match v with | Some v when v < 100.0 -> Ok (Some v) | _ -> Error "The value should be < 100")
-        }
-        |> Auto.initForm
-
     let model =
         {
             Form = form
             ValidationError = validate form |> transformValidation
-            AutoForm = autoForm
-            AutoFormValidationError = None
         }
     model, Cmd.none
 
@@ -126,10 +106,6 @@ let update msg model =
     match msg with
     | UpdateForm newForm ->
         {model with Form = newForm; ValidationError = validate newForm |> transformValidation}, Cmd.none
-    | UpdateAutoForm newForm ->
-        {model with AutoForm = newForm}, Cmd.none
-    | ValidateAutoForm ->
-        {model with AutoFormValidationError = validate model.AutoForm |> transformValidation}, Cmd.none
 
 let formatField (item : IFormFieldModel<_, _>) =
     match item.FieldValue with
@@ -142,16 +118,16 @@ let formatField (item : IFormFieldModel<_, _>) =
 module CustomComponent =
     type Props<'f> =
         {
-            Item : FormFieldModel<'f, DateTimeOffset>
+            Item : FormInputModel<'f, DateTimeOffset>
             Form : 'f
             MessageDispatcher : 'f -> unit
         }
 
     type private SubForm =
         {
-            Date : FormFieldModel<SubForm, DateTime>
-            Time : FormFieldModel<SubForm, TimeSpan>
-            Tz : FormFieldModel<SubForm, float>
+            Date : FormInputModel<SubForm, DateTime>
+            Time : FormInputModel<SubForm, TimeSpan>
+            Tz : FormInputModel<SubForm, float>
         }
 
     let private buildCustom<'f> = FunctionComponent.Of (fun (props : Props<'f>) ->
@@ -160,9 +136,9 @@ module CustomComponent =
         let miniForm = 
             Hooks.useState
                 {
-                    Date = FormFieldModel.dateField (match item.Value with | Error e -> Error e | Ok x -> Ok x.Date) (fun item form -> {form with Date = item})
-                    Time = FormFieldModel.timeSpanField (match item.Value with | Error e -> Error e | Ok x -> Ok x.TimeOfDay) (fun item form -> {form with Time = item})
-                    Tz = FormFieldModel.floatField (match item.Value with | Error e -> Error e | Ok x -> Ok x.Offset.TotalHours) (fun item form -> {form with Tz = item})
+                    Date = FormInputModel.dateField (match item.Value with | Error e -> Error e | Ok x -> Ok x.Date) (fun item form -> {form with Date = item})
+                    Time = FormInputModel.timeSpanField (match item.Value with | Error e -> Error e | Ok x -> Ok x.TimeOfDay) (fun item form -> {form with Time = item})
+                    Tz = FormInputModel.floatField (match item.Value with | Error e -> Error e | Ok x -> Ok x.Offset.TotalHours) (fun item form -> {form with Tz = item})
                 }
 
         let state = Hooks.useState item.Value
@@ -181,12 +157,12 @@ module CustomComponent =
 
             state.update newValue
 
-            let item = {item with Text = ""; Value = newValue}
-            item.Updater item props.Form |> props.MessageDispatcher
+            (item |> FormInputModel.updateValue newValue).UpdateForm props.Form
+            |> props.MessageDispatcher
 
         div [Style [Display DisplayOptions.Flex; FlexDirection "column"]] [
             div [Style [Display DisplayOptions.Flex; FlexDirection "row"]] [
-                match item.Label with 
+                match item.Layout.Label with 
                 | None -> ()
                 | Some l -> label [] [str l]
 
@@ -202,7 +178,7 @@ module CustomComponent =
         ]
     )
 
-    let custom<'f> (form : 'f) (item : FormFieldModel<'f, DateTimeOffset>) (messageDispatcher : 'f -> unit) = 
+    let custom<'f> (form : 'f) (item : FormInputModel<'f, DateTimeOffset>) (messageDispatcher : 'f -> unit) = 
         buildCustom<'f> {Form = form; Item = item; MessageDispatcher = messageDispatcher}
 
 let view model dispatch =
@@ -282,16 +258,6 @@ let view model dispatch =
                     ]
 
                 ]
-
-                div [] [
-                    fieldset [] [
-                        legend [] [str "Automatic form"]
-
-                        Auto.View.form model.AutoForm (UpdateAutoForm >> dispatch) [
-                            button [OnClick (fun e -> dispatch ValidateAutoForm; e.preventDefault())] [str "Validate"]
-                        ]
-                    ]
-                ]
             ]
 
             div [] [
@@ -338,24 +304,6 @@ let view model dispatch =
 
                         dt [] [str "Choice with complex data"]
                         dd [] [model.Form.ChoiceComplex |> formatField]
-                    ]
-                ]
-
-                fieldset [] [
-                    legend [] [str "Automatic form data"]
-
-                    div [] [
-                        match model.AutoFormValidationError with
-                        | None -> str "The form is valid"
-                        | Some e -> sprintf "Error: %s" e |> str
-                    ]
-
-                    dl [] [
-                        dt [] [str "String"]
-                        dd [] [model.AutoForm.String |> formatField]
-
-                        dt [] [str "Float option"]
-                        dd [] [model.AutoForm.FloatOption |> formatField]
                     ]
                 ]
             ]

@@ -92,18 +92,41 @@ module Formatters =
         | None -> ""
         | Some x -> f x
 
-/// Interface for a form's field model
 type IFormFieldModel<'f, 't> =
-    abstract FieldValue : Result<'t, string>
-    abstract UpdateForm : 'f -> 'f
-    abstract Validate : 'f -> Result<'t, string> -> Result<'t, string>
+    abstract member FieldValue : Result<'t, string>
+    abstract member FormattedValue : string
 
+type FormFieldLayout =
+    {
+        /// The field's label. Useful for auto-generation
+        Label : string option
+        /// The field's placeholder
+        Placeholder : string option
+        /// Tooltip text
+        Tooltip : string option
+        /// If true the field is required. Only used for UI purposes
+        IsRequired : bool
+    }
+
+    static member Empty(required : bool) =
+        {
+            Label = None
+            Placeholder = None
+            Tooltip = None
+            IsRequired = required
+        }
+
+module FormFieldLayout =
+    let label l = l.Label
+    let placeholder l = l.Placeholder
+    let tooltip l = l.Tooltip
+    
 /// The form field model, used for "input" elements
 // in order to keep the implementation as simple as possible, the "fixed" and "runtime" parts
 // of the model are kept in the same structure. In particular:
 // - Text and Value change as response to the user's actions
 // - the other fields are set at initialization time and should never change
-type FormFieldModel<'f, 't> =
+type FormInputModel<'f, 't> =
     {
         /// Input text
         Text : string
@@ -112,26 +135,30 @@ type FormFieldModel<'f, 't> =
         /// Parser for the given type
         Parser : string -> Result<'t, string>
         /// A function that updates the form with the current field. Usually just something such as (fun item form -> {form with MyItem = item})
-        Updater : FormFieldModel<'f, 't> -> 'f -> 'f
+        Updater : FormInputModel<'f, 't> -> 'f -> 'f
         /// Gets a string representation of the underlying value
         Formatter : 't -> string
         /// Validate the field's value, possibly against the whole form
         Validator : ('f -> 't -> Result<'t, string>) option
-        /// The field's label. Useful for auto-generation
-        Label : string option
+        /// Layout options
+        Layout : FormFieldLayout
     }
+
+    member self.Validate form value = 
+        match self.Validator with
+        | None -> value
+        | Some f -> value |> Result.bind (f form)
+
+    member self.UpdateForm form =
+        let item = {self with Value = self.Value |> self.Validate form}
+        item.Updater item form
 
     interface IFormFieldModel<'f, 't> with
         member self.FieldValue = self.Value
-
-        member self.Validate form value = 
-            match self.Validator with
-            | None -> value
-            | Some f -> value |> Result.bind (f form)
-
-        member self.UpdateForm form =
-            let item = {self with Value = self.Value |> (self :> IFormFieldModel<'f, 't>).Validate form}
-            item.Updater item form
+        member self.FormattedValue = 
+            match self.Value with
+            | Error e -> sprintf "Error: %s" e
+            | Ok x -> self.Formatter x
 
 /// Model for a "checkbox" element.
 type FormCheckboxModel<'f> =
@@ -139,56 +166,100 @@ type FormCheckboxModel<'f> =
         Value : Result<bool, string>
         Updater : FormCheckboxModel<'f> -> 'f -> 'f
         Validator : ('f -> bool -> Result<bool, string>) option
-        Label : string option
+        Layout : FormFieldLayout
     }
+
+    member self.Validate form value = 
+        match self.Validator with
+        | None -> value
+        | Some f -> value |> Result.bind (f form)
+
+    member self.UpdateForm form =
+        let item = {self with Value = self.Value |> self.Validate form}
+        item.Updater item form
 
     interface IFormFieldModel<'f, bool> with
         member self.FieldValue = self.Value
-
-        member self.Validate form value = 
-            match self.Validator with
-            | None -> value
-            | Some f -> value |> Result.bind (f form)
-
-        member self.UpdateForm form =
-            let item = {self with Value = self.Value |> (self :> IFormFieldModel<'f, bool>).Validate form}
-            item.Updater item form
+        member self.FormattedValue = 
+            match self.Value with
+            | Error e -> sprintf "Error: %s" e
+            | Ok x -> string x
 
 /// Model for a "select"-like element
-type FormListModel<'f, 't when 't : equality> =
+type FormSelectModel<'f, 't> =
     {
         /// The available values
         Values : 't[]
+        /// A function that generates an unique string for each value
+        KeyFunction : 't -> string
         /// A function to get the user-facing string representation of a value
         ValueLabel : 't -> string
         /// The current item's value
         Value : Result<'t, string>
         /// A function used to serialize the value to a string that is stored in the underlying "select"/"option"
-        Updater : FormListModel<'f, 't> -> 'f -> 'f
+        Updater : FormSelectModel<'f, 't> -> 'f -> 'f
         /// Validate the field's value, possibly against the whole form
         Validator : ('f -> 't -> Result<'t, string>) option
-        /// The field's label. Useful for auto-generation
-        Label : string option
         /// Adds an empty element if true
         AddEmptySelection : bool
         /// The error to display when no selection has been made
         EmptyErrorString : string
+        /// Layout options
+        Layout : FormFieldLayout
     }
+
+    member self.Validate form value = 
+        match self.Validator with
+        | None -> value
+        | Some f -> value |> Result.bind (f form)
+
+    member self.UpdateForm form =
+        let item = {self with Value = self.Value |> self.Validate form}
+        item.Updater item form
 
     interface IFormFieldModel<'f, 't> with
         member self.FieldValue = self.Value
+        member self.FormattedValue = 
+            match self.Value with
+            | Error e -> sprintf "Error: %s" e
+            | Ok x -> self.ValueLabel x
 
-        member self.Validate form value = 
-            match self.Validator with
-            | None -> value
-            | Some f -> value |> Result.bind (f form)
+type FormFieldModel<'f, 't> = 
+    | Input of FormInputModel<'f, 't>
+    | Select of FormSelectModel<'f, 't>
+    | Checkbox of FormCheckboxModel<'f>
 
-        member self.UpdateForm form =
-            let item = {self with Value = self.Value |> (self :> IFormFieldModel<'f, 't>).Validate form}
-            item.Updater item form
+    member self.Value = 
+        match self with
+        | Input x -> x.Value
+        | Select x -> x.Value
+        | Checkbox x -> x.Value |> box |> unbox<Result<'t, string>>
 
-module FormFieldModel =
-    let create<'f, 't> text (value : Result<'t, string>) parser formatter (updater : FormFieldModel<'f, 't> -> 'f -> 'f) =
+    member self.Validate form (value : Result<'t, string>) =
+        match self with
+        | Input x -> x.Validate form value
+        | Select x -> x.Validate form value
+        | Checkbox x -> x.Validate form (value |> box |> unbox<Result<bool, string>>) |> box |> unbox<Result<'t, string>>
+
+    member self.UpdateForm form =
+        match self with
+        | Input x -> x.UpdateForm form
+        | Select x -> x.UpdateForm form
+        | Checkbox x -> x.UpdateForm form
+
+    interface IFormFieldModel<'f, 't> with
+        member self.FieldValue = self.Value
+        member self.FormattedValue =
+            match self with
+            | Input x -> (x :> IFormFieldModel<_, _>).FormattedValue
+            | Select x -> (x :> IFormFieldModel<_, _>).FormattedValue
+            | Checkbox x -> (x :> IFormFieldModel<_, _>).FormattedValue
+
+module FormInputModel =
+    let inline create<'f, 't> text (value : Result<'t, string>) parser formatter (updater : FormInputModel<'f, 't> -> 'f -> 'f) =
+        
+        let isNotOption = typedefof<'t> <> typedefof<Option<_>>
+
         {
             Text = text
             Value = value
@@ -196,15 +267,17 @@ module FormFieldModel =
             Updater = updater
             Formatter = formatter
             Validator = None
-            Label = None
+            Layout = FormFieldLayout.Empty(isNotOption)
         }
 
-    let create'<'f, 't> (value : Result<'t, string>) parser formatter (updater : FormFieldModel<'f, 't> -> 'f -> 'f) =
+    let inline create'<'f, 't> (value : Result<'t, string>) parser formatter (updater : FormInputModel<'f, 't> -> 'f -> 'f) =
         create (match value with | Error _ -> "" | Ok x -> formatter x) value parser formatter updater
 
-    let withValidator validator (item : FormFieldModel<_, _>) = {item with Validator = Some validator}
-    let withLabel label (item : FormFieldModel<_, _>) = {item with Label = Some label}
-    let withFormatter formatter (item : FormFieldModel<_, _>) = {item with Formatter = formatter}
+    let withValidator validator (item : FormInputModel<_, _>) = {item with Validator = Some validator}
+    let withLabel label (item : FormInputModel<_, _>) = {item with Layout = {item.Layout with Label = Some label}}
+    let withPlaceholder placeholder (item : FormInputModel<_, _>) = {item with Layout = {item.Layout with Placeholder = Some placeholder}}
+    let withTooltip text (item : FormInputModel<_, _>) = {item with Layout = {item.Layout with Tooltip = Some text}}
+    let withFormatter formatter (item : FormInputModel<_, _>) = {item with Formatter = formatter}
 
     // constructors
 
@@ -252,12 +325,17 @@ module FormFieldModel =
 
     // helpers
 
-    let inline update<'f, 't> text (item : FormFieldModel<'f, 't>) =
+    let inline updateText<'f, 't> text (item : FormInputModel<'f, 't>) =
         {item with Text = text; Value = item.Parser text}
 
-    let inline updateForm<'f, 't> (form : 'f) (item : FormFieldModel<'f, 't>) text =
-        let item' = update<'f, 't> text item
-        (item' :> IFormFieldModel<'f, 't>).UpdateForm form
+    let inline updateValue<'f, 't> value (item : FormInputModel<'f, 't>) =
+        match value with
+        | Ok x -> {item with Value = value; Text = item.Formatter x}
+        | Error _ -> {item with Value = value}
+
+    let inline updateForm<'f, 't> (form : 'f) (item : FormInputModel<'f, 't>) text =
+        let item' = updateText<'f, 't> text item
+        item'.UpdateForm form
     
 module FormCheckboxModel =
     let create initialValue updater =
@@ -265,24 +343,33 @@ module FormCheckboxModel =
             Value = initialValue
             Updater = updater
             Validator = None
-            Label = None
+            Layout = FormFieldLayout.Empty(true)
         }
 
     let inline update<'f> value (item : FormCheckboxModel<'f>) =
-        {item with Value = Ok value}
+        {item with Value = value}
 
     let withValidator validator (item : FormCheckboxModel<_>) = {item with Validator = Some validator}
-    let withLabel label (item : FormCheckboxModel<_>) = {item with Label = Some label}
+    let withLabel label (item : FormCheckboxModel<_>) = {item with Layout = {item.Layout with Label = Some label}}
+    let withPlaceholder placeholder (item : FormCheckboxModel<_>) = {item with Layout = {item.Layout with Placeholder = Some placeholder}}
+    let withTooltip text (item : FormCheckboxModel<_>) = {item with Layout = {item.Layout with Tooltip = Some text}}
 
-module FormListModel =
-    let inline create<'f, 't when 't : equality> initialValue (availableValues : seq<'t>) (labelForValue : 't -> string) (updater : FormListModel<'f, 't> -> 'f -> 'f) =
+module FormSelectModel =
+    open Fable.Core.JS
+
+    let inline create<'f, 't> initialValue (availableValues : seq<'t>) (labelForValue : 't -> string) (updater : FormSelectModel<'f, 't> -> 'f -> 'f) =
+        let kf = JSON.stringify
         // check that the initial value is contained in the available values
         match initialValue with
-        | Ok x when availableValues |> Seq.contains x |> not -> failwithf "Bad initial value"
+        | Ok x ->
+            let k = kf x
+            match availableValues |> Seq.tryFind (fun x -> kf x = k) with
+            | None -> failwithf "The given values do not contain the initial value"
+            | _ -> ()
         | _ -> ()
 
         // by default adds an empty invalid selection if the data type is not Option<_>
-        let addEmpty = typedefof<'t> <> typedefof<Option<_>>
+        let isNotOption = typedefof<'t> <> typedefof<Option<_>>
 
         let emptyErrorString =
             match initialValue with
@@ -292,12 +379,13 @@ module FormListModel =
         {
             Values = availableValues |> Seq.toArray
             ValueLabel = labelForValue
-            Value = initialValue
+            Value = initialValue 
+            KeyFunction = kf
             Updater = updater
             Validator = None
-            Label = None
-            AddEmptySelection = addEmpty
+            AddEmptySelection = isNotOption
             EmptyErrorString = emptyErrorString
+            Layout = FormFieldLayout.Empty(isNotOption)
         }
 
     let inline createOfDU<'f, 't when 't : equality> initialValue (duType : Type) updater =
@@ -310,11 +398,14 @@ module FormListModel =
 
         create<'f, 't> initialValue values (box >> string) updater
 
-    let inline update<'f, 't when 't : equality> value (item : FormListModel<'f, 't>) =
-        {item with Value = Ok value}
+    let inline update<'f, 't> value (item : FormSelectModel<'f, 't>) =
+        {item with Value = value}
     
-    let withValidator validator (item : FormListModel<_, _>) = {item with Validator = Some validator}
-    let withLabel label (item : FormListModel<_, _>) = {item with Label = Some label}
+    let withKeyFunction f (item : FormSelectModel<_, _>) = {item with KeyFunction = f}
+    let withValidator validator (item : FormSelectModel<_, _>) = {item with Validator = Some validator}
+    let withLabel label (item : FormSelectModel<_, _>) = {item with Layout = {item.Layout with Label = Some label}}
+    let withPlaceholder placeholder (item : FormSelectModel<_, _>) = {item with Layout = {item.Layout with Placeholder = Some placeholder}}
+    let withTooltip text (item : FormSelectModel<_, _>) = {item with Layout = {item.Layout with Tooltip = Some text}}
     let withValueLebel f item = {item with ValueLabel = f}
     let withEmptySelection add item = {item with AddEmptySelection = add}
     let withEmptyErrorString error item = {item with EmptyErrorString = error}
@@ -325,6 +416,51 @@ module FormListModel =
             | Ok x when values |> Seq.contains x |> not -> Error "choose an item"
             | e -> e
         {item with Values = values |> Seq.toArray; Value = newValue}
+
+module FormFieldModel =
+    let layout<'f, 't> (x : FormFieldModel<'f, 't>) = 
+        match x with
+        | Input x -> x.Layout
+        | Select x -> x.Layout
+        | Checkbox x -> x.Layout
+
+    let withLabel l x = 
+        match x with
+        | Input x -> FormInputModel.withLabel l x |> Input
+        | Select x -> FormSelectModel.withLabel l x |> Select
+        | Checkbox x -> FormCheckboxModel.withLabel l x |> Checkbox
+
+    let withPlaceholder t x = 
+        match x with
+        | Input x -> FormInputModel.withPlaceholder t x |> Input
+        | Select x -> FormSelectModel.withPlaceholder t x |> Select
+        | Checkbox x -> FormCheckboxModel.withPlaceholder t x |> Checkbox
+
+    let withTooltip t x = 
+        match x with
+        | Input x -> FormInputModel.withTooltip t x |> Input
+        | Select x -> FormSelectModel.withTooltip t x |> Select
+        | Checkbox x -> FormCheckboxModel.withTooltip t x |> Checkbox
+    
+    let label<'f, 't> (item : FormFieldModel<'f, 't>) = item |> layout |> FormFieldLayout.label
+
+    let placeholder<'f, 't> (item : FormFieldModel<'f, 't>) = item |>  layout |> FormFieldLayout.placeholder 
+
+    let tooltip<'f, 't> (item : FormFieldModel<'f, 't>) = item |> layout |> FormFieldLayout.tooltip
+        
+    let withValidator f x =
+        match x with
+        | Input x -> {x with Validator = Some f} |> Input
+        | Select x -> {x with Validator = Some f} |> Select
+        | Checkbox x -> {x with Validator = Some (f |> box |> unbox)} |> Checkbox
+
+    let update (v : Result<'t, string>) field =
+        match field with
+        | Input field -> field |> FormInputModel.updateValue v |> Input
+        | Select field -> field |> FormSelectModel.update v |> Select
+        | Checkbox field -> field |> FormCheckboxModel.update (v |> box |> unbox) |> Checkbox
+
+    let updateForm form (field : FormFieldModel<_, _>) = field.UpdateForm form
 
 // helpers
 
@@ -337,7 +473,7 @@ let (|FieldValue|_|) (x : IFormFieldModel<_, _>) =
     match x.FieldValue with
     | Ok x -> Some x
     | _ -> None
-
+    
 /// Extract the field's error in a pattern matching
 /// Example:
 /// match myForm with
@@ -350,12 +486,13 @@ let (|FieldError|_|) (x : IFormFieldModel<_, _>) =
 
 /// Helpers for the view. Based on Fable.React: no css or other assumptions are made.
 module View =
-    let inline onChange<'f, 't> (form : 'f) (item : FormFieldModel<'f, 't>) (messageDispatcher : 'f -> unit) (ev : Event) = FormFieldModel.updateForm form item ev.Value |> messageDispatcher
+    let inline onChange<'f, 't> (form : 'f) (item : FormInputModel<'f, 't>) (messageDispatcher : 'f -> unit) (ev : Event) = FormInputModel.updateForm form item ev.Value |> messageDispatcher
 
     let fieldBase form item messageDispatcher (props : IHTMLProp list) =
         let props' = props @ [
             DefaultValue item.Text
             OnChange (onChange form item messageDispatcher)
+            match item.Layout.Placeholder with | None -> () | Some t -> Placeholder t
         ] 
         input props'
         
@@ -371,26 +508,28 @@ module View =
             DefaultValue (match item.Value with | Ok x -> x | Error e -> false)
             OnChange (fun ev ->
                 let item = {item with Value = Ok ev.Checked}
-                (item :> IFormFieldModel<_, _>).UpdateForm form |> messageDispatcher
+                item.UpdateForm form |> messageDispatcher
             )
+            match item.Layout.Placeholder with | None -> () | Some t -> Placeholder t
         ]
 
-    let selectBase<'f, 't when 't : equality> (form : 'f) (item : FormListModel<'f, 't>) messageDispatcher (selectProps : IHTMLProp list) (optionProps : IHTMLProp list) =
+    let selectBase<'f, 't> (form : 'f) (item : FormSelectModel<'f, 't>) messageDispatcher (selectProps : IHTMLProp list) (optionProps : IHTMLProp list) =
         let props' =  selectProps @ [
-            DefaultValue (match item.Value with | Ok x -> item.Values |> Seq.findIndex (fun v -> v = x) |> string | Error e -> "")
+            DefaultValue (match item.Value with | Ok x -> item.KeyFunction x |> string | Error e -> "")
             OnChange (fun ev -> 
                 let value = 
-                    if String.IsNullOrWhiteSpace ev.Value then
+                    if String.IsNullOrWhiteSpace ev.Value && item.AddEmptySelection then
                         Error item.EmptyErrorString
                     else
-                        Ok item.Values.[Int32.Parse ev.Value]
+                        item.Values |> Array.find (fun x -> item.KeyFunction x = ev.Value) |> Ok
                 let item = {item with Value = value}
-                (item :> IFormFieldModel<_, _>).UpdateForm form |> messageDispatcher
+                item.UpdateForm form |> messageDispatcher
             )
+            match item.Layout.Placeholder with | None -> () | Some t -> Placeholder t
         ]
 
-        let optionProps' i = optionProps @ [
-            HTMLAttr.Value (string i)
+        let optionProps' x = optionProps @ [
+            HTMLAttr.Value x
         ]
 
         select props' [
@@ -400,7 +539,7 @@ module View =
                 ]) [str ""]
 
             for i, o in Seq.indexed item.Values do
-                option (optionProps' i) [
+                option (optionProps' (item.KeyFunction o)) [
                     str (item.ValueLabel o)
                 ]
         ]
@@ -408,10 +547,10 @@ module View =
     let basicCheckbox<'f> (form : 'f) (item : FormCheckboxModel<'f>) messageDispatcher =
         checkboxBase form item messageDispatcher []
         
-    let basicSelect<'f, 't when 't : equality> (form : 'f) (item : FormListModel<'f, 't>) messageDispatcher =
+    let basicSelect<'f, 't when 't : equality> (form : 'f) (item : FormSelectModel<'f, 't>) messageDispatcher =
         selectBase form item messageDispatcher [] []
         
-let inline updateForm<'f, 't> form (field : IFormFieldModel<'f, 't>) =
+let inline updateForm<'f, 't> form (field : FormFieldModel<'f, 't>) =
     field.UpdateForm form
 
 /// Validate the form. Return a list of couples (<field name>, <error message>) if there is at least one error, None if the form is valid
@@ -420,7 +559,12 @@ let inline validate<'f> (f : 'f) =
     if Reflection.FSharpType.IsRecord t |> not then
         failwithf "Only records are supported by now"
 
-    let ft = typeof<FormFieldModel<_, _>>
+    // unfortunately fable does not support reflection on interfaces yet
+    // so we must check for each known type, including the wrapper
+    let fti = typeof<FormInputModel<_, _>>
+    let fts = typeof<FormSelectModel<_, _>>
+    let ftc = typeof<FormCheckboxModel<_>>
+    let ftw = typeof<FormFieldModel<_, _>>
 
     let fields =
         Reflection.FSharpType.GetRecordFields(t)
@@ -429,14 +573,18 @@ let inline validate<'f> (f : 'f) =
             // we know that out type is generic, so let's drop non generics
             if not t.IsGenericType then false
             else
-                t.GetGenericTypeDefinition() = ft.GetGenericTypeDefinition()
+                let td = t.GetGenericTypeDefinition()
+                td = fti.GetGenericTypeDefinition() || 
+                td = fts.GetGenericTypeDefinition() || 
+                td = ftc.GetGenericTypeDefinition() ||
+                td = ftw.GetGenericTypeDefinition()
         )
 
     let errors =
         fields
         |> Array.choose (fun pi ->
-            let field = Reflection.FSharpValue.GetRecordField(f, pi) |> unbox<FormFieldModel<_, _>>
-            match field.Value with
+            let field = Reflection.FSharpValue.GetRecordField(f, pi) |> unbox<IFormFieldModel<_, _>>
+            match field.FieldValue with
             | Ok _ -> None
             | Error x -> Some (pi.Name, x)
         )
@@ -452,45 +600,56 @@ let inline isValid<'f> (f : 'f) =
 /// This module aims to reduce the form model's boilerplate by reflection. 
 /// Currently only forms represented by plain records of "FormFieldModel" ("input" elements) are supported
 module Auto =
+    let inline private u _ _ = failwithf "looks like you forgot to call 'initForm'"
+
     let inline field<'f, 't> (initialValue : Result<'t, string>) =
+        let inline i x = x |> unbox<FormInputModel<'f, 't>> |> FormFieldModel.Input
+
         if typeof<'t> = typeof<string> then
-            FormFieldModel.stringField (initialValue |> box |> unbox<Result<string, string>>) (fun _ f -> f) |> box
+            FormInputModel.stringField (initialValue |> box |> unbox<Result<string, string>>) u |> box |> i
         elif typeof<'t> = typeof<string option> then
-            FormFieldModel.stringOptionField (initialValue |> box |> unbox<Result<string option, string>>) (fun _ f -> f) |> box
+            FormInputModel.stringOptionField (initialValue |> box |> unbox<Result<string option, string>>) u |> box |> i
         elif typeof<'t> = typeof<int> then
-            FormFieldModel.intField (initialValue |> box |> unbox<Result<int, string>>) (fun _ f -> f) |> box
+            FormInputModel.intField (initialValue |> box |> unbox<Result<int, string>>) u |> box |> i
         elif typeof<'t> = typeof<int option> then
-            FormFieldModel.intOptionField (initialValue |> box |> unbox<Result<int option, string>>) (fun _ f -> f) |> box
+            FormInputModel.intOptionField (initialValue |> box |> unbox<Result<int option, string>>) u |> box |> i
         elif typeof<'t> = typeof<float> then
-            FormFieldModel.floatField (initialValue |> box |> unbox<Result<float, string>>) (fun _ f -> f) |> box    
+            FormInputModel.floatField (initialValue |> box |> unbox<Result<float, string>>) u |> box |> i
         elif typeof<'t> = typeof<option<float>> then
-            FormFieldModel.floatOptionField (initialValue |> box |> unbox<Result<float option, string>>) (fun _ f -> f) |> box
+            FormInputModel.floatOptionField (initialValue |> box |> unbox<Result<float option, string>>) u |> box |> i
         elif typeof<'t> = typeof<DateTime> then
-            FormFieldModel.dateField (initialValue |> box |> unbox<Result<DateTime, string>>) (fun _ f -> f) |> box    
+            FormInputModel.dateField (initialValue |> box |> unbox<Result<DateTime, string>>) u |> box |> i
         elif typeof<'t> = typeof<option<DateTime>> then
-            FormFieldModel.dateOptionField (initialValue |> box |> unbox<Result<DateTime option, string>>) (fun _ f -> f) |> box
+            FormInputModel.dateOptionField (initialValue |> box |> unbox<Result<DateTime option, string>>) u |> box |> i
         elif typeof<'t> = typeof<TimeSpan> then
-            FormFieldModel.timeSpanField (initialValue |> box |> unbox<Result<TimeSpan, string>>) (fun _ f -> f) |> box    
+            FormInputModel.timeSpanField (initialValue |> box |> unbox<Result<TimeSpan, string>>) u |> box |> i
         elif typeof<'t> = typeof<option<TimeSpan>> then
-            FormFieldModel.timeSpanOptionField (initialValue |> box |> unbox<Result<TimeSpan option, string>>) (fun _ f -> f) |> box
+            FormInputModel.timeSpanOptionField (initialValue |> box |> unbox<Result<TimeSpan option, string>>) u |> box |> i
         elif typeof<'t> = typeof<DateTimeOffset> then
-            FormFieldModel.dateTimeField (initialValue |> box |> unbox<Result<DateTimeOffset, string>>) (fun _ f -> f) |> box    
+            FormInputModel.dateTimeField (initialValue |> box |> unbox<Result<DateTimeOffset, string>>) u |> box |> i
         elif typeof<'t> = typeof<option<DateTimeOffset>> then
-            FormFieldModel.dateTimeOptionField (initialValue |> box |> unbox<Result<DateTimeOffset option, string>>) (fun _ f -> f) |> box
+            FormInputModel.dateTimeOptionField (initialValue |> box |> unbox<Result<DateTimeOffset option, string>>) u |> box |> i
+        elif typeof<'t> = typeof<bool> then
+            FormCheckboxModel.create (initialValue |> box |> unbox<Result<bool, string>>) u |> box |> unbox<FormCheckboxModel<'f>> |> FormFieldModel.Checkbox
         else
             failwithf "field type not supported yet: %s" (typeof<'t>.Name)
-        |> unbox<FormFieldModel<'f, 't>>
-        
-    let inline field'<'f, 't> (initialValue : Result<'t, string>) label =
-        field<'f, 't> initialValue |> FormFieldModel.withLabel label
+
+    let inline field'<'f, 't> (initialValue : Result<'t, string>) fieldLabel =
+        field<'f, 't> initialValue |> FormFieldModel.withLabel fieldLabel
+
+    let inline select<'f, 't> (initialValue : Result<'t, string>) (values : 't seq) (labelFunction : 't -> string) =
+        FormSelectModel.create<'f, 't> initialValue values labelFunction u |> FormFieldModel.Select
+
+    let inline select'<'f, 't> (initialValue : Result<'t, string>) (values : 't seq) (labelFunction : 't -> string) fieldLabel =
+        select<'f, 't> initialValue values labelFunction |> FormFieldModel.withLabel fieldLabel
 
     /// Automatically build an "updater" function
-    let inline private autoUpdater<'f, 't> (pi : Reflection.PropertyInfo) (fields : Reflection.PropertyInfo[]) (field : FormFieldModel<'f, 't>) (form : 'f) =
+    let inline private autoUpdater<'f, 't, 'w> (pi : Reflection.PropertyInfo) (fields : Reflection.PropertyInfo[]) (wrapper : 'w -> FormFieldModel<_, _>) (field : 'w) (form : 'f) =
         let values = 
             [|
                 for f in fields do
                     if f.Name = pi.Name then
-                        box field
+                        box (wrapper field)
                     else
                         Reflection.FSharpValue.GetRecordField(form, f)
             |]
@@ -506,85 +665,89 @@ module Auto =
         Reflection.FSharpType.GetRecordFields(t)
         |> Array.map(fun x -> 
             let t = x.PropertyType
-            // we know that out type is generic, so let's drop non generics
+            // we know that our type is generic, so let's drop non generics
             if not t.IsGenericType then failwithf "Unsupported field type"
             else
-                if t.GetGenericTypeDefinition() <> ft.GetGenericTypeDefinition() then
-                    failwithf "Unsupported field type"
-                else
+                if t.GetGenericTypeDefinition() = ft.GetGenericTypeDefinition() then
                     x
+                else
+                    failwithf "Unsupported field type: %A" g
         )
+
+    let inline debugForm<'f>(f : 'f) =
+        [
+            for pi in getFields<'f> f do
+                let field = Reflection.FSharpValue.GetRecordField(f, pi) |> unbox<IFormFieldModel<'f, _>>
+                pi.Name, field.FormattedValue
+        ]
 
     /// Initialize the form by attaching an "updater" to each field
     let inline initForm<'f>(f : 'f) =
-        let fields = getFields<'f> f
-    
-        let fields' =
+        let fields =
+            let fields = getFields<'f> f
             fields
             |> Array.map (fun pi ->
-                let field = Reflection.FSharpValue.GetRecordField(f, pi)
-                let field = field |> unbox<FormFieldModel<_, _>>
-                {field with Updater = (autoUpdater<'f, _> pi fields) |> box |> unbox} |> box
+                let field = Reflection.FSharpValue.GetRecordField(f, pi) |> unbox<FormFieldModel<_, _>>
+                
+                match field with
+                | Input x -> {x with Updater = (autoUpdater<'f, _, _> pi fields Input) |> box |> unbox} |> Input
+                | Select x -> {x with Updater = (autoUpdater<'f, _, _> pi fields Select) |> box |> unbox} |> Select
+                | Checkbox x -> {x with Updater = (autoUpdater<'f, _, _> pi fields Checkbox) |> box |> unbox} |> Checkbox
+                |> box
+    
             )
-        Reflection.FSharpValue.MakeRecord(typeof<'f>, fields') |> unbox<'f>
+        Reflection.FSharpValue.MakeRecord(typeof<'f>, fields) |> unbox<'f>
 
     module View =
+        [<RequireQualifiedAccess>]
+        type Kind = | Input | Select | Checkbox
+         
+        module Classes =
+            let Form = "modulo-form"
+            let Field = "modulo-field"
+            let InputField = "modulo-field-input"
+            let SelectField = "modulo-field-select"
+            let CheckboxField = "modulo-field-checkbox"
+            let Required = "modulo-field-is-required"
+            let FieldName x = sprintf "modulo-field-name-%s" x
+            let FieldKind = function | Kind.Input -> InputField | Kind.Select -> SelectField | Kind.Checkbox -> CheckboxField
+
         /// Return a list of (field name, (label element, input element)). The field name is the name of the form record field.
-        let inline fields<'f> (f : 'f) messageDispatcher =
+        let inline fieldsBase<'f> (f : 'f) messageDispatcher inputProps selectProps optionProps checkboxProps =
             [
                 for pi in getFields<'f> f do
-                    let field = Reflection.FSharpValue.GetRecordField(f, pi) |> unbox<FormFieldModel<_, _>>
-                    let labelText = field.Label |> Option.defaultValue pi.Name
+                    let field = Reflection.FSharpValue.GetRecordField(f, pi) |> unbox<FormFieldModel<'f, _>>
+                    let labelText = field |> FormFieldModel.label |> Option.defaultValue pi.Name
                     let label = label [HtmlFor pi.Name ] [str labelText]
-                    let el = View.basicField' f field pi.Name messageDispatcher
-                    pi.Name, (label, el)
+
+                    let el, kind =
+                        match field with
+                        | Input field -> View.fieldBase f field messageDispatcher ([Name pi.Name] @ inputProps), Kind.Input
+                        | Select field -> View.selectBase f field messageDispatcher selectProps optionProps, Kind.Select
+                        | Checkbox field -> View.checkboxBase f field messageDispatcher checkboxProps, Kind.Checkbox
+
+                    pi.Name, (label, el, (kind, FormFieldModel.layout field))
             ]
 
-        let inline form<'f> (f : 'f) messageDispatcher (extraElements : ReactElement seq) =
-            form [] [
-                for name, (label, element) in fields<'f> f messageDispatcher do
-                    div [] [
+        /// Return a list of (field name, (label element, input element)). The field name is the name of the form record field.
+        let inline fields<'f> (f : 'f) messageDispatcher =
+            fieldsBase<'f> f messageDispatcher [] [] [] []
+
+        let inline basicForm<'f> (f : 'f) messageDispatcher (extraElements : ReactElement seq) =
+            form [ClassName Classes.Form] [
+                for name, (label, element, (kind, layout)) in fields<'f> f messageDispatcher do
+                    let className = 
+                        [
+                            Classes.Field
+                            Classes.FieldKind kind
+                            Classes.FieldName name
+                            if layout.IsRequired then Classes.Required
+                        ] |> String.concat " "
+                        
+                    div [ClassName className; match layout.Tooltip with | None -> () | Some t -> Title t] [
                         label
                         element
                     ]
                 for extra in extraElements do
                     extra
             ]
-
-/// Builder for a FormFieldModel record
-type FieldBuilder() =
-    member self.Yield(_) =
-        {
-            Text = ""
-            Value = Error "no value specified"
-            Parser = fun _ -> Error "no parser specified"
-            Updater = fun _ f -> f
-            Formatter = string
-            Validator = None
-            Label = None
-        }
-
-    [<CustomOperation("text")>]
-    member self.Text(s : FormFieldModel<_, _>, x) = {s with Text = x}
-    
-    [<CustomOperation("value")>]
-    member self.Value(s : FormFieldModel<_, _>, x) = {s with Value = x}
-
-    [<CustomOperation("parser")>]
-    member self.Parser(s, x) = {s with Parser = x}
-
-    [<CustomOperation("updater")>]
-    member self.Updater(s : FormFieldModel<_, _>, x) = {s with Updater = x}
-
-    [<CustomOperation("formatter")>]
-    member self.Formatter(s, x) = {s with Formatter = x}
-
-    [<CustomOperation("validator")>]
-    member self.Validator(s : FormFieldModel<_, _>, x) = {s with Validator = Some x}
-
-    [<CustomOperation("label")>]
-    member self.Label(s : FormFieldModel<_, _>, x) = {s with Label = Some x}
-
-    member self.Return(x) = x
-
-let field = FieldBuilder()

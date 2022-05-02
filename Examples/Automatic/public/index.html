@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+  <title>Fable.Modulo automatic form demo</title>
+  <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="shortcut icon" href="fable.ico" />
+  <style type="text/css">
+
+.modulo-form {
+	width: 100%;
+	font: 13px Arial, Helvetica, sans-serif;
+}
+.modulo-field label {
+	display: block;
+	margin: 0px 0px 2px 0px;
+	font-weight: bold;
+	padding-top: 8px;
+}
+.modulo-field-is-required label::after{
+	color:red;
+	content: " *"
+}
+.modulo-field input, .modulo-field select {
+	box-sizing: border-box;
+	border:1px solid #BEBEBE;
+	padding: 10px;
+	margin: 0px 0px 5px 0px;
+	outline: none;	
+	min-width: 200px;
+}
+
+.modulo-form button {
+	margin-top: 20px;
+	background-color: rgb(129, 228, 200);
+	border: none;
+	color: rgb(20, 149, 56);
+	font-size: 1em;
+	padding: 10px 50px;
+	cursor: pointer;
+	width: 100%;
+}
+  </style>
+
+</head>
+<body>
+    <div id="react-main"></div>
+    <script src="bundle.js"></script>
+</body>
+</html>
