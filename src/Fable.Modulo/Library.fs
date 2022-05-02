@@ -238,6 +238,11 @@ type FormFieldModel<'f, 't> =
         | Select x -> x.Value
         | Checkbox x -> x.Value |> box |> unbox<Result<'t, string>>
 
+    member self.Error =
+        match self.Value with
+        | Error e -> Some e
+        | Ok _ -> None
+
     member self.Validate form (value : Result<'t, string>) =
         match self with
         | Input x -> x.Validate form value
@@ -781,6 +786,18 @@ module Auto =
     module View =
         [<RequireQualifiedAccess>]
         type Kind = | Input | Select | Checkbox
+
+        /// Represents the field element
+        type Field =
+            {
+                Name : string
+                Label : ReactElement
+                LabelText : string option
+                Element : ReactElement
+                Kind : Kind
+                Layout : FormFieldLayout
+                Error : string option
+            }
          
         module Classes =
             let Form = "modulo-form"
@@ -792,43 +809,142 @@ module Auto =
             let FieldName x = sprintf "modulo-field-name-%s" x
             let FieldKind = function | Kind.Input -> InputField | Kind.Select -> SelectField | Kind.Checkbox -> CheckboxField
 
-        /// Return a list of (field name, (label element, input element)). The field name is the name of the form record field.
-        let inline fieldsBase<'f> (f : 'f) messageDispatcher inputProps selectProps optionProps checkboxProps =
+        // field index -> field name -> field error -> 
+        type PropsFun = int -> string -> string option -> list<IHTMLProp>
+        let emptyProps x y z = []
+
+        /// Return a list of Field records
+        let inline fieldsBase<'f> (form : 'f) messageDispatcher (inputProps : PropsFun) (selectProps : PropsFun) optionProps (checkboxProps : PropsFun) labelProps =
             [
-                for pi in getFields<'f> f do
-                    let field = Reflection.FSharpValue.GetRecordField(f, pi) |> unbox<FormFieldModel<'f, _>>
+                for i, pi in getFields<'f> form |> Seq.indexed do
+                    let field = Reflection.FSharpValue.GetRecordField(form, pi) |> unbox<FormFieldModel<'f, _>>
                     let labelText = field |> FormFieldModel.label |> Option.defaultValue pi.Name
-                    let label = label [HtmlFor pi.Name ] [str labelText]
+                    let label = label (labelProps @ [HtmlFor pi.Name]) [str labelText]
 
-                    let el, kind =
-                        match field with
-                        | Input field -> View.fieldBase f field messageDispatcher ([Name pi.Name] @ inputProps), Kind.Input
-                        | Select field -> View.selectBase f field messageDispatcher selectProps optionProps, Kind.Select
-                        | Checkbox field -> View.checkboxBase f field messageDispatcher checkboxProps, Kind.Checkbox
+                    let commonProps : List<IHTMLProp> = [Name pi.Name; AutoFocus (i = 0)]
 
-                    pi.Name, (label, el, (kind, FormFieldModel.layout field))
+                    let error = field.Error
+
+                    let f = 
+                        {
+                            Name = pi.Name
+                            Label = label
+                            Element = str ""
+                            LabelText = field |> FormFieldModel.label
+                            Kind = Kind.Input
+                            Layout = FormFieldModel.layout field
+                            Error = error
+                        }
+
+                    match field with
+                    | Input field -> {f with Element = View.fieldBase form field messageDispatcher (commonProps @ inputProps i pi.Name error); Kind = Kind.Input}
+                    | Select field -> {f with Element = View.selectBase form field messageDispatcher (commonProps @ selectProps i pi.Name error) optionProps; Kind =  Kind.Select}
+                    | Checkbox field -> {f with Element = View.checkboxBase form field messageDispatcher (commonProps @ checkboxProps i pi.Name error); Kind = Kind.Checkbox}
             ]
 
         /// Return a list of (field name, (label element, input element)). The field name is the name of the form record field.
         let inline fields<'f> (f : 'f) messageDispatcher =
-            fieldsBase<'f> f messageDispatcher [] [] [] []
+            fieldsBase<'f> f messageDispatcher emptyProps emptyProps [] emptyProps []
 
         /// Return a basic form with the fields extracted from the given record
         let inline basicForm<'f> (f : 'f) messageDispatcher (extraElements : ReactElement seq) =
+            let fields =
+                fieldsBase<'f> f messageDispatcher (fun _ _ _ -> [TabIndex 0]) (fun _ _ _ -> [TabIndex 0]) [] (fun _ _ _ -> [TabIndex 0]) []
+
             form [ClassName Classes.Form] [
-                for name, (label, element, (kind, layout)) in fields<'f> f messageDispatcher do
+                for field in fields do
                     let className = 
                         [
                             Classes.Field
-                            Classes.FieldKind kind
-                            Classes.FieldName name
-                            if layout.IsRequired then Classes.Required
+                            Classes.FieldKind field.Kind
+                            Classes.FieldName field.Name
+                            if field.Layout.IsRequired then Classes.Required
                         ] |> String.concat " "
                         
-                    div [ClassName className; match layout.Tooltip with | None -> () | Some t -> Title t] [
-                        label
-                        element
+                    div [ClassName className; match field.Layout.Tooltip with | None -> () | Some t -> Title t] [
+                        field.Label
+                        field.Element
                     ]
                 for extra in extraElements do
                     extra
             ]
+
+        module Bulma =
+            module Classes =
+                let Field = "field"
+                let Control = "control"
+                let Help = "help"
+                let Input = "input"
+                let Select = "select"
+                let Checkbox = "checkbox"
+
+                let HasIconsRight = "has-icons-right"
+                let Icon = "icon"
+                let IsSmall = "is-small"
+                let IsRight = "is-right"
+                let IsSuccess = "is-success"
+                let IsDanger = "is-danger"
+                let Fa kind = sprintf "fas fa-%s" kind
+
+                let concat (classes : string list) = ClassName (classes |> String.concat " ")
+
+            let inline form<'f> (f : 'f) messageDispatcher (sizeClass : string option) (extraElements : ReactElement seq) =
+                let inputProps idx name (error : string option) : List<IHTMLProp> = 
+                    [
+                        Classes.concat [
+                            "input"
+                            if error.IsSome then "is-danger" else ()
+                            match sizeClass with | None -> () | Some x -> x
+                        ]
+                    ]
+                let labelProps : List<IHTMLProp> = [Classes.concat ["label"; match sizeClass with | None -> () | Some x -> x]]
+
+                form [Classes.concat [Classes.Form]] [
+                    for field in fieldsBase<'f> f messageDispatcher inputProps emptyProps [] emptyProps labelProps do
+                        let className = 
+                            [
+                                Classes.Field
+                                Classes.FieldKind field.Kind
+                                Classes.FieldName field.Name
+                                if field.Layout.IsRequired then Classes.Required
+                            ] |> String.concat " "
+                            
+                        div [ClassName className; match field.Layout.Tooltip with | None -> () | Some x -> Title x] [
+                            // for input and select display the label
+                            match field.Kind with
+                            | Kind.Input | Kind.Select -> field.Label
+                            | Kind.Checkbox -> ()
+
+                            div [Classes.concat [Classes.Control; Classes.HasIconsRight]] [
+                                match field.Kind with
+                                | Kind.Input -> 
+                                    field.Element
+                                    span [Classes.concat [Classes.Icon; Classes.IsSmall; Classes.IsRight]] [
+                                        match field.Error with
+                                        | None ->
+                                            i [Classes.concat [Classes.IsSuccess; Classes.Fa "check"]] []
+                                        | Some e ->
+                                            i [Classes.concat [Classes.IsDanger; Classes.Fa "exclamation-triangle"]] []
+                                    ]
+    
+                                | Kind.Select -> 
+                                    div [Classes.concat [Classes.Select; match field.Error with | None -> () | Some _ -> Classes.IsDanger; match sizeClass with | None -> () | Some x -> x]] [field.Element]
+                                | Kind.Checkbox ->
+                                    label [Classes.concat [Classes.Checkbox; match sizeClass with | None -> () | Some x -> x]] [
+                                        field.Element
+                                        match field.LabelText with 
+                                        | None -> () 
+                                        | Some x when x.StartsWith(" ") -> str x
+                                        | Some x -> sprintf " %s" x |> str
+                                    ]
+                            ]
+                            match field.Error with
+                            | Some e ->
+                                p [Classes.concat [Classes.Help; Classes.IsDanger]] [str e]
+                            | None ->
+                                p [Classes.concat [Classes.Help; Classes.IsSuccess]] [str "\u00a0"]
+                        ]
+                    for extra in extraElements do
+                        extra
+                ]
+    
