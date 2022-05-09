@@ -548,15 +548,46 @@ let (|FieldError|_|) (x : IFormFieldModel<_, _>) =
 
 /// Helpers for the view. Based on Fable.React: no css or other assumptions are made.
 module View =
-    /// OnChange handler for the input element
-    let inline onChange<'f, 't> (form : 'f) (item : FormInputModel<'f, 't>) (messageDispatcher : 'f -> unit) (ev : Event) = FormInputModel.updateForm form item ev.Value |> messageDispatcher
+    module FormInputModel =
+        let inline defaultValue<'f, 't> (item : FormInputModel<'f, 't>) =
+            item.Text
+
+        /// OnChange handler for the input element
+        let inline onChange<'f, 't> (form : 'f) (item : FormInputModel<'f, 't>) (messageDispatcher : 'f -> unit) (ev : Event) = FormInputModel.updateForm form item ev.Value |> messageDispatcher
+
+    module FormSelectModel =
+        let inline defaultValue<'f, 't> (item : FormSelectModel<'f, 't>) =
+            match item.Value with 
+            | Ok x -> item.KeyFunction x
+            | Error e -> ""
+            
+        /// OnChange handler for the select element
+        let inline onChange<'f, 't> (form : 'f) (item : FormSelectModel<'f, 't>) (messageDispatcher : 'f -> unit) (ev : Event) = 
+            let value = 
+                if String.IsNullOrWhiteSpace ev.Value && item.AddEmptySelection then
+                    Error item.EmptyErrorString
+                else
+                    item.Values |> Array.find (fun x -> item.KeyFunction x = ev.Value) |> Ok
+            let item = {item with Value = value}
+            item.UpdateForm form |> messageDispatcher
+
+    module FormCheckboxModel =
+        let inline defaultValue<'f> (item : FormCheckboxModel<'f>) =
+            match item.Value with 
+            | Ok x -> x 
+            | Error _ -> false
+
+        /// OnChange handler for the select element
+        let inline onChange<'f> (form : 'f) (item : FormCheckboxModel<'f>) (messageDispatcher : 'f -> unit) (ev : Event) = 
+            let item = {item with Value = Ok ev.Checked}
+            item.UpdateForm form |> messageDispatcher
 
     /// Build a ReactElement 'input' with the given props except for 'DefaultValue', 'OnChange' and 'Placeholder' 
     /// that are set automatically
     let fieldBase form item messageDispatcher (props : IHTMLProp list) =
         let props' = props @ [
-            DefaultValue item.Text
-            OnChange (onChange form item messageDispatcher)
+            DefaultValue (FormInputModel.defaultValue item)
+            OnChange (FormInputModel.onChange form item messageDispatcher)
             match item.Layout.Placeholder with | None -> () | Some t -> Placeholder t
         ] 
         input props'
@@ -574,11 +605,8 @@ module View =
     let checkboxBase<'f> (form : 'f) (item : FormCheckboxModel<'f>) messageDispatcher (props : IHTMLProp list) =
         input [
             Type "checkbox"
-            DefaultValue (match item.Value with | Ok x -> x | Error e -> false)
-            OnChange (fun ev ->
-                let item = {item with Value = Ok ev.Checked}
-                item.UpdateForm form |> messageDispatcher
-            )
+            DefaultValue (FormCheckboxModel.defaultValue item)
+            OnChange (FormCheckboxModel.onChange form item messageDispatcher)
             match item.Layout.Placeholder with | None -> () | Some t -> Placeholder t
         ]
 
@@ -588,16 +616,8 @@ module View =
     /// you can pass its HTML properties but the 'Value' is set automatically.
     let selectBase<'f, 't> (form : 'f) (item : FormSelectModel<'f, 't>) messageDispatcher (selectProps : IHTMLProp list) (optionProps : IHTMLProp list) =
         let props' =  selectProps @ [
-            DefaultValue (match item.Value with | Ok x -> item.KeyFunction x |> string | Error e -> "")
-            OnChange (fun ev -> 
-                let value = 
-                    if String.IsNullOrWhiteSpace ev.Value && item.AddEmptySelection then
-                        Error item.EmptyErrorString
-                    else
-                        item.Values |> Array.find (fun x -> item.KeyFunction x = ev.Value) |> Ok
-                let item = {item with Value = value}
-                item.UpdateForm form |> messageDispatcher
-            )
+            DefaultValue (FormSelectModel.defaultValue item)
+            OnChange (FormSelectModel.onChange form item messageDispatcher)
             match item.Layout.Placeholder with | None -> () | Some t -> Placeholder t
         ]
 
