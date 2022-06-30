@@ -7,11 +7,18 @@ open Browser.Types
 
 /// Utility functions
 module Helpers =
-    /// Transform the list to options and add None at the beginning
+    /// <summary>Transform the list to options and add None at the beginning</summary>
+    /// <example>
+    /// <code>
+    /// optionValues [1; 2; 3]
+    /// </code>
+    /// returns 
+    /// <code>
+    /// val it: seq&lt;int option&gt; = seq [None; Some 1; Some 2; Some 3]
+    /// </code>
+    /// </example>
     let inline optionValues<'t> (x : 't seq) =
         Seq.append (seq [None]) (x |> Seq.map Some)
-
-    
 
 /// Helpers to parse the string inserted by the user
 module Parsers =
@@ -100,9 +107,11 @@ module Formatters =
         | None -> ""
         | Some x -> f x
 
-/// Interface for the "runtime" part of a field (its value)
+/// Interface for the "runtime" part of a field (its underlying value)
 type IFormFieldModel<'f, 't> =
+    /// The underlying field's value
     abstract member FieldValue : Result<'t, string>
+    /// The underlying field's value formatted as a string
     abstract member FormattedValue : string
 
 /// Layout-related data
@@ -126,6 +135,7 @@ type FormFieldLayout =
             IsRequired = required
         }
 
+/// <summary>Functions to handle a field's layout properties. See <see cref="T:Fable.Modulo.FormFieldLayout" /> type</summary>
 module FormFieldLayout =
     let label l = l.Label
     let placeholder l = l.Placeholder
@@ -144,7 +154,11 @@ type FormInputModel<'f, 't> =
         Value : Result<'t, string>
         /// Parser for the given type
         Parser : string -> Result<'t, string>
-        /// A function that updates the form with the current field. Usually just something such as (fun item form -> {form with MyItem = item})
+        /// <summary>A function that updates the form with the current field. </summary>
+        /// <example>
+        /// Usually just something such as 
+        /// <code>(fun item form -&gt; {form with MyItem = item})</code>
+        /// </example>
         Updater : FormInputModel<'f, 't> -> 'f -> 'f
         /// Gets a string representation of the underlying value
         Formatter : 't -> string
@@ -154,11 +168,13 @@ type FormInputModel<'f, 't> =
         Layout : FormFieldLayout
     }
 
+    /// Validate the given value against the given form using this field's validator if defined
     member self.Validate form value = 
         match self.Validator with
         | None -> value
         | Some f -> value |> Result.bind (f form)
 
+    /// Update the parent form with this item's value
     member self.UpdateForm form =
         let item = {self with Value = self.Value |> self.Validate form}
         item.Updater item form
@@ -179,11 +195,13 @@ type FormCheckboxModel<'f> =
         Layout : FormFieldLayout
     }
 
+    /// Validate the given value against the given form using this field's validator if defined
     member self.Validate form value = 
         match self.Validator with
         | None -> value
         | Some f -> value |> Result.bind (f form)
 
+    /// Update the parent form with this item's value
     member self.UpdateForm form =
         let item = {self with Value = self.Value |> self.Validate form}
         item.Updater item form
@@ -218,11 +236,13 @@ type FormSelectModel<'f, 't> =
         Layout : FormFieldLayout
     }
 
+    /// Validate the given value against the given form using this field's validator if defined
     member self.Validate form value = 
         match self.Validator with
         | None -> value
         | Some f -> value |> Result.bind (f form)
 
+    /// Update the parent form with this item's value
     member self.UpdateForm form =
         let item = {self with Value = self.Value |> self.Validate form}
         item.Updater item form
@@ -240,23 +260,27 @@ type FormFieldModel<'f, 't> =
     | Select of FormSelectModel<'f, 't>
     | Checkbox of FormCheckboxModel<'f>
 
+    /// The underlying field's value
     member self.Value = 
         match self with
         | Input x -> x.Value
         | Select x -> x.Value
         | Checkbox x -> x.Value |> box |> unbox<Result<'t, string>>
 
+    /// The underlying field's error value (if any)
     member self.Error =
         match self.Value with
         | Error e -> Some e
         | Ok _ -> None
 
+    /// Validate the given value against the given form using this field's validator if defined
     member self.Validate form (value : Result<'t, string>) =
         match self with
         | Input x -> x.Validate form value
         | Select x -> x.Validate form value
         | Checkbox x -> x.Validate form (value |> box |> unbox<Result<bool, string>>) |> box |> unbox<Result<'t, string>>
-
+ 
+    /// Update the parent form with this item's value
     member self.UpdateForm form =
         match self with
         | Input x -> x.UpdateForm form
@@ -271,8 +295,9 @@ type FormFieldModel<'f, 't> =
             | Select x -> (x :> IFormFieldModel<_, _>).FormattedValue
             | Checkbox x -> (x :> IFormFieldModel<_, _>).FormattedValue
 
+/// <summary>Functions related to the <see cref="T:Fable.Modulo.FormInputModel`2" /> type</summary>
 module FormInputModel =
-    /// Create a FormInputModel object 
+    /// <summary>Create a FormInputModel object</summary>
     let inline create<'f, 't> text (value : Result<'t, string>) parser formatter (updater : FormInputModel<'f, 't> -> 'f -> 'f) =
         
         let isNotOption = typedefof<'t> <> typedefof<Option<_>>
@@ -304,11 +329,21 @@ module FormInputModel =
 
     // constructors
 
-    /// Construct a FormInputModel backed by a string
+    /// <summary>Construct a FormInputModel backed by a string</summary>
+    /// <example>
+    /// <code>
+    /// FormInputModel.stringField (Ok "") (fun item form -> {form with MyField = item})
+    /// </code>
+    /// </example>
     let stringField initialValue updater =
         create' initialValue Parsers.string Formatters.string updater
 
-    /// Construct a FormInputModel backed by an optional string
+    /// <summary>Construct a FormInputModel backed by an optional string</summary>
+    /// <example>
+    /// <code>
+    /// FormInputModel.stringOptionField (Ok None) (fun item form -> {form with MyField = item})
+    /// </code>
+    /// </example>
     let stringOptionField initialValue updater =
         create' initialValue Parsers.stringOption (Formatters.option Formatters.string) updater
 
@@ -377,6 +412,7 @@ module FormInputModel =
         let item' = updateText<'f, 't> text item
         item'.UpdateForm form
     
+/// <summary>Functions related to the <see cref="T:Fable.Modulo.FormCheckboxModel`1" /> type</summary>
 module FormCheckboxModel =
     /// Create a FormCheckboxModel
     let create initialValue updater =
@@ -400,11 +436,13 @@ module FormCheckboxModel =
     /// Set the tooltip text
     let withTooltip text (item : FormCheckboxModel<_>) = {item with Layout = {item.Layout with Tooltip = Some text}}
 
+/// <summary>Functions related to the <see cref="T:Fable.Modulo.FormSelectModel`2" /> type</summary>
 module FormSelectModel =
     open Fable.Core.JS
 
-    /// Create a FormSelectModel object. If the backing type is not an option, an empty choice is
-    /// inserted at the beginning of the list. The default KeyFunction is JSON.stringify.
+    /// <summary>Create a <see cref="T:Fable.Modulo.FormSelectModel`2" /> object. </summary>
+    /// <remarks>If the backing type is not an option, an empty choice is inserted at the beginning of the list.</remarks>
+    /// <remarks>The default KeyFunction is JSON.stringify.</remarks>
     let inline create<'f, 't> initialValue (availableValues : seq<'t>) (labelForValue : 't -> string) (updater : FormSelectModel<'f, 't> -> 'f -> 'f) =
         let kf = JSON.stringify
         // check that the initial value is contained in the available values
@@ -436,8 +474,10 @@ module FormSelectModel =
             Layout = FormFieldLayout.Empty(isNotOption)
         }
 
-    /// Create a FormSelectModel object using the cases from the given discriminated union.
+    /// <summary>
+    /// Create a <see cref="T:Fable.Modulo.FormSelectModel`2" /> object using the cases from the given discriminated union.
     /// Currently only simple discriminated unions are supported (e.g. plain cases without data)
+    /// </summary>
     let inline createOfDU<'f, 't> initialValue (duType : Type) updater =
         let values = 
             Reflection.FSharpType.GetUnionCases(duType)
@@ -477,6 +517,7 @@ module FormSelectModel =
             | e -> e
         {item with Values = values |> Seq.toArray; Value = newValue}
 
+/// <summary>Functions related to the <see cref="T:Fable.Modulo.FormFieldModel`2" /> type</summary>
 module FormFieldModel =
     /// Extract the layout options
     let layout<'f, 't> (x : FormFieldModel<'f, 't>) = 
@@ -534,21 +575,27 @@ module FormFieldModel =
 
 // helpers
 
-/// Extract the field's value in a pattern matching
-/// Example:
+/// <summary>Extract the field's value in a pattern matching</summary>
+/// <example>
+/// <code>
 /// match myForm with
-/// | {MyField = FieldValue value} -> ...do something...
-/// | _ -> ...do sometnihg else...
+/// | {MyField = FieldValue value} -&gt; ...do something...
+/// | _ -&gt; ...do sometnihg else...
+/// </code>
+/// </example>
 let (|FieldValue|_|) (x : IFormFieldModel<_, _>) =
     match x.FieldValue with
     | Ok x -> Some x
     | _ -> None
     
-/// Extract the field's error in a pattern matching
-/// Example:
+/// <summary>Extract the field's error in a pattern matching</summary>
+/// <example>
+/// <code>
 /// match myForm with
-/// | {MyField = FieldError value} -> ...do something...
-/// | _ -> ...do sometnihg else...
+/// | {MyField = FieldError value} -&gt; ...do something...
+/// | _ -&gt; ...do sometnihg else...
+/// </code>
+/// </example>
 let (|FieldError|_|) (x : IFormFieldModel<_, _>) =
     match x.FieldValue with
     | Error e -> Some e
@@ -659,8 +706,9 @@ module View =
 /// Update the form with the given field
 let inline updateForm<'f, 't> form (field : FormFieldModel<'f, 't>) =
     field.UpdateForm form
-
-/// Validate the form. Return a list of couples (<field name>, <error message>) if there is at least one error, None if the form is valid
+    
+/// <summary>Validate the form. </summary>
+/// <returns>A list of couples (field name, error message) if there is at least one error, None if the form is valid</returns>
 let inline validate<'f> (f : 'f) =
     let t = typeof<'f>
     if Reflection.FSharpType.IsRecord t |> not then
@@ -701,6 +749,7 @@ let inline validate<'f> (f : 'f) =
     | [] -> None
     | e -> Some e
 
+/// <summary>Return true if the given form is valid</summary>
 let inline isValid<'f> (f : 'f) =
     validate f |> Option.isNone
 
@@ -832,36 +881,67 @@ module Auto =
         Reflection.FSharpValue.MakeRecord(typeof<'f>, fields) |> unbox<'f>
 
     module View =
+        /// <summary></summary>
+        /// <exclude />
         [<RequireQualifiedAccess>]
         type Kind = | Input | Select | Checkbox
 
         /// Represents the field element
         type Field =
             {
+                /// Name of the field on the enclosing form record
                 Name : string
+                /// &lt;label&gt; element
                 Label : ReactElement
+                /// Label text used to build the &lt;label&gt; element. If None defaults to the Name field
                 LabelText : string option
+                /// input element
                 Element : ReactElement
+                /// kind of the element
                 Kind : Kind
+                /// layout properties
                 Layout : FormFieldLayout
+                /// error from the form model underlying value, if any
                 Error : string option
             }
          
+        /// CSS classes
         module Classes =
+            /// <summary>the css class <b>modulo-form</b>, applied to the 'form' element</summary>
             let Form = "modulo-form"
+            /// <summary>the css class  <b>modulo-field</b> , applied to each field's 'div' container</summary>
             let Field = "modulo-field"
+            /// <summary>the css class  <b>modulo-field-input</b>  applied to each 'input' element</summary>
             let InputField = "modulo-field-input"
+            /// <summary>the css class  <b>modulo-field-select</b> , applied to each 'select' element</summary>
             let SelectField = "modulo-field-select"
+            /// <summary>the css class  <b>modulo-field-checkbox</b> , applied to each 'checkbox' element</summary>
             let CheckboxField = "modulo-field-checkbox"
+            /// <summary>the css class  <b>modulo-field-is-required</b> , applied to each required field's 'div' container</summary>
             let Required = "modulo-field-is-required"
+            /// <summary>the css class  <b>modulo-field-name-</b><em>&lt;name&gt;</em> , where 'name' is the form record field's name</summary>
             let FieldName x = sprintf "modulo-field-name-%s" x
             let FieldKind = function | Kind.Input -> InputField | Kind.Select -> SelectField | Kind.Checkbox -> CheckboxField
 
-        // field index -> field name -> field error -> 
+        /// <summary>
+        /// A generator of HTML properties
+        /// <para>
+        /// A function that gets called for each field in the form and produce a list of IHTMLProp. The parameters are:
+        /// </para>
+        /// <para>* Index of the field</para>
+        /// <para>* Field's name</para>
+        /// <para>* Field's error value</para>
+        /// </summary>
         type PropsFun = int -> string -> string option -> list<IHTMLProp>
+        /// <summary></summary>
+        /// <exclude />
         let emptyProps x y z = []
 
+        /// <summary>
         /// Return a list of Field records
+        /// <para>The properties for each field can be injected by the PropsFun parameters</para>
+        /// </summary>
+
         let inline fieldsBase<'f> (form : 'f) messageDispatcher (inputProps : PropsFun) (selectProps : PropsFun) optionProps (checkboxProps : PropsFun) labelProps =
             [
                 for i, pi in getFields<'f> form |> Seq.indexed do
@@ -890,16 +970,16 @@ module Auto =
                     | Checkbox field -> {f with Element = View.checkboxBase form field messageDispatcher (commonProps @ checkboxProps i pi.Name error); Kind = Kind.Checkbox}
             ]
 
-        /// Return a list of (field name, (label element, input element)). The field name is the name of the form record field.
-        let inline fields<'f> (f : 'f) messageDispatcher =
-            fieldsBase<'f> f messageDispatcher emptyProps emptyProps [] emptyProps []
+        /// <summary>Return a list of Field records with no custom properties</summary>
+        let inline fields<'f> (form : 'f) messageDispatcher =
+            fieldsBase<'f> form messageDispatcher emptyProps emptyProps [] emptyProps []
 
         /// Return a basic form with the fields extracted from the given record
-        let inline basicForm<'f> (f : 'f) messageDispatcher (extraElements : ReactElement seq) =
+        let inline basicForm<'f> (form : 'f) messageDispatcher (extraElements : ReactElement seq) =
             let fields =
-                fieldsBase<'f> f messageDispatcher (fun _ _ _ -> [TabIndex 0]) (fun _ _ _ -> [TabIndex 0]) [] (fun _ _ _ -> [TabIndex 0]) []
+                fieldsBase<'f> form messageDispatcher (fun _ _ _ -> [TabIndex 0]) (fun _ _ _ -> [TabIndex 0]) [] (fun _ _ _ -> [TabIndex 0]) []
 
-            form [ClassName Classes.Form] [
+            Fable.React.Standard.form [ClassName Classes.Form] [
                 for field in fields do
                     let className = 
                         [
@@ -917,6 +997,7 @@ module Auto =
                     extra
             ]
 
+        /// Bulma CSS classes and helpers
         module Bulma =
             module Classes =
                 let Field = "field"
@@ -936,6 +1017,7 @@ module Auto =
 
                 let concat (classes : string list) = ClassName (classes |> String.concat " ")
 
+            /// Return a form with bulma's classes and required structure
             let inline form<'f> (f : 'f) messageDispatcher (sizeClass : string option) (extraElements : ReactElement seq) =
                 let inputProps idx name (error : string option) : List<IHTMLProp> = 
                     [
@@ -996,106 +1078,149 @@ module Auto =
                         extra
                 ]
 
+/// Computation expression used to build an "input" field model
 type InputBuilder() =
+    ///[omit]
     member inline self.Yield<'f, 't>(_) =
         match Auto.inputField<'f, 't> (Error "please fill me") with
         | None -> failwithf "unsupported type: '%s'" typeof<'t>.Name
         | Some x -> x
 
+    /// Set the displayed initial text of the input field
     [<CustomOperation("text")>]
     member inline __.Text<'f, 't>(s : FormInputModel<'f, 't>, t) = {s with Text = t}
     
+    /// Set the underlying initial value of the input field
     [<CustomOperation("value")>]
     member inline __.Value<'f, 't>(s : FormInputModel<'f, 't>, x : 't) = {s with Value = Ok x}
 
+    /// Set the underlying initial value of the input field as "Error"
     [<CustomOperation("error")>]
     member inline __.Error<'f, 't>(s : FormInputModel<'f, 't>, x : string) = {s with Value = Error x}
 
+    /// Set the parser function for the field
     [<CustomOperation("parser")>]
     member inline __.Parser<'f, 't>(s : FormInputModel<'f, 't>, x) = {s with Parser = x}
 
+    /// Set the field value's validator function
     [<CustomOperation("validator")>]
     member inline __.Validator<'f, 't>(s : FormInputModel<'f, 't>, x) = s |> FormInputModel.withValidator x
 
+    /// Set the field's attached label
     [<CustomOperation("label")>]
     member inline __.Label<'f, 't>(s : FormInputModel<'f, 't>, x) = s |> FormInputModel.withLabel x
     
+    /// Set the field's placeholder text
     [<CustomOperation("placeholder")>]
     member inline __.PlaceHolder<'f, 't>(s : FormInputModel<'f, 't>, x) = s |> FormInputModel.withPlaceholder x
 
+    /// Set the field's tooltip text
     [<CustomOperation("tooltip")>]
     member inline __.Tooltip<'f, 't>(s : FormInputModel<'f, 't>, x) = s |> FormInputModel.withTooltip x
-    
+
+    ///[omit]
     member inline __.Run<'f, 't>(x : FormInputModel<'f, 't>) =
         x |> FormFieldModel.Input
 
+/// Computation expression used to build a "checkbox" field model
 type CheckboxBuilder() =
+    ///[omit]
     member inline self.Yield<'f>(_) =
         Auto.checkboxField<'f> (Error "please fill me")
     
+    /// Set the underlying initial value of the checkbox field
     [<CustomOperation("value")>]
     member inline __.Value<'f>(s : FormCheckboxModel<'f>, x : bool) = {s with Value = Ok x}
 
+    /// Set the underlying initial value of the input field as "Error"
     [<CustomOperation("error")>]
     member inline __.Error<'f>(s : FormCheckboxModel<'f>, x : string) = {s with Value = Error x}
 
+    /// Set the field value's validator function
     [<CustomOperation("validator")>]
     member inline __.Validator<'f>(s : FormCheckboxModel<'f>, x) = s |> FormCheckboxModel.withValidator x
 
+    /// Set the field's attached label
     [<CustomOperation("label")>]
     member inline __.Label<'f>(s : FormCheckboxModel<'f>, x) = s |> FormCheckboxModel.withLabel x
         
+    /// Set the field's placeholder text
     [<CustomOperation("placeholder")>]
     member inline __.PlaceHolder<'f>(s : FormCheckboxModel<'f>, x) = s |> FormCheckboxModel.withPlaceholder x
 
+    /// Set the field's tooltip text
     [<CustomOperation("tooltip")>]
     member inline __.Tooltip<'f>(s : FormCheckboxModel<'f>, x) = s |> FormCheckboxModel.withTooltip x
     
+    ///[omit]
     member inline __.Run<'f, 't>(x : FormCheckboxModel<'f>) =
         x |> FormFieldModel.Checkbox |> box |> unbox<FormFieldModel<'f, bool>>
         
+/// Computation expression used to build a "select" field model
 type SelectBuilder() =
+    ///[omit]
     member inline self.Yield<'f, 't>(_) =
         Auto.selectRaw<'f, 't> (Error "please fill me") [] (fun _ -> failwithf "label function not provided")
         |> box
         |> unbox<FormSelectModel<'f, 't>>
 
+    /// Set the field's list of choices
     [<CustomOperation("values")>]
     member inline __.Values(s : FormSelectModel<'f, 't>, x : 't seq) = s |> FormSelectModel.withValues x
 
+    /// Set the function to produce the displayed text for a given value
     [<CustomOperation("value_label")>]
     member inline __.ValueLabel(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withValueLebel x
 
+    /// Set the field's initial underlying value
     [<CustomOperation("value")>]
     member inline __.Value(s : FormSelectModel<'f, 't>, x) = {s with Value = Ok x}
 
+    /// Set the underlying initial value of the input field as "Error"
     [<CustomOperation("error")>]
     member inline __.Error(s : FormSelectModel<'f, 't>, x) = {s with Value = Error x}
 
+    /// Override the default key generator (defaulting to JSON.stringify)
     [<CustomOperation("key_function")>]
     member inline __.KeyFunction(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withKeyFunction x
 
+    /// Set the field value's validator function
     [<CustomOperation("validator")>]
     member inline __.Validator(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withValidator x
 
+    /// If provided an empty value is added as the first item
     [<CustomOperation("empty_selection")>]
     member inline __.EmptySelection(s : FormSelectModel<'f, 't>) = s |> FormSelectModel.withEmptySelection true
 
+    /// Don't add an empty value as the first item
+    [<CustomOperation("no_empty_selection")>]
+    member inline __.NoEmptySelection(s : FormSelectModel<'f, 't>) = s |> FormSelectModel.withEmptySelection false
+
+    /// The error message to display when no value has been provided
     [<CustomOperation("empty_error_message")>]
     member inline __.EmptyErrorMessage(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withEmptyErrorMessage x
 
+    /// Set the field's attached label
     [<CustomOperation("label")>]
     member inline __.Label<'f, 't>(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withLabel x
     
+    /// Set the field's placeholder text
     [<CustomOperation("placeholder")>]
     member inline __.PlaceHolder<'f, 't>(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withPlaceholder x
 
+    /// Set the field's tooltip text
     [<CustomOperation("tooltip")>]
     member inline __.Tooltip<'f, 't>(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withTooltip x
     
+    ///[omit]
     member inline __.Run<'f, 't>(x : FormSelectModel<'f, 't>) =
         x |> FormFieldModel.Select |> box |> unbox<FormFieldModel<'f, 't>>
         
+/// Computation expression used to build an "input" field model
 let input = InputBuilder()
+
+/// Computation expression used to build a "checkbox" field model
 let checkbox = CheckboxBuilder()
+
+/// Computation expression used to build a "select" field model
 let select = SelectBuilder()

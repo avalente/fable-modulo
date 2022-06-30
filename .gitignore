@@ -294,3 +294,9 @@ __pycache__/
 *.xsd.cs
 
 *.fs.js.map
+
+output/*
+tmp/*
+**/.fsdocs/*
+
+**/.DS_Store

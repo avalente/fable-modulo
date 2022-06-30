@@ -192,9 +192,9 @@ let view model dispatch =
                         legend [] [str "String field"]
 
                         // this one doesn't use the helpers in View
-                        input [
+                        Fable.React.Standard.input [
                             Value model.Form.String.Text
-                            OnChange (View.onChange model.Form model.Form.String (UpdateForm >> dispatch))
+                            OnChange (View.FormInputModel.onChange model.Form model.Form.String (UpdateForm >> dispatch))
                             AutoFocus true
                         ]
                     ]
