@@ -43,25 +43,45 @@ let transformValidation x =
     
 let init _ =
     let autoForm = 
-        let inline f (value : Result<'t, string>) label = Auto.field'<AutoForm, 't> value label
+        Auto.initForm {
+            String = input {
+                value ""
+                label "A field taking a string"
+            }
+            FloatOption = input {
+                error "please fill me"
+                label "A float optional value" 
+                validator (fun _ v -> match v with | None -> Ok None | Some v when v < 100.0 -> Ok (Some v) | _ -> Error "The value should be < 100")
+                placeholder "please insert a value < 100"
+                tooltip "This is a float input"
+            }
+            Checkbox = checkbox {
+                value false
+                label "A checkbox"
+            }
+            Choice = select {
+                error "please select an item"
+                values [
+                    {Key = First; Description = "first option"}
+                    {Key = Second; Description = "second option"}
+                    {Key = Third; Description = "third option"}
+                ]
+                value_label (fun x -> x.Description)
+                label "Choice"
+            }
+            ChoiceOptional = select {
+                value None
+                values (Helpers.optionValues [{|Key = 1; Value = "option 1"|}; {|Key = 2; Value = "option 2"|}])
+                value_label (fun x -> x |> Option.map (fun x -> x.Value) |> Option.defaultValue "<no choice>")
+                label "Choice optional"
+            }
 
-        {
-            String = f (Ok "") "A field taking a string"
-            FloatOption = 
-                f (Error "please fill me") "A float optional value" 
-                |> FormFieldModel.withValidator (fun _ v -> match v with | None -> Ok None | Some v when v < 100.0 -> Ok (Some v) | _ -> Error "The value should be < 100")
-                |> FormFieldModel.withPlaceholder "please insert a value < 100"
-                |> FormFieldModel.withTooltip "This is a float input"
-            Checkbox = f (Ok false) "A checkbox"
-            Choice = Auto.select'<AutoForm, _> (Error "please select an item") [{Key = First; Description = "first option"}; {Key = Second; Description = "second option"}; {Key = Third; Description = "third option"}] (fun x -> x.Description) "Choice"
-            ChoiceOptional = Auto.select'<AutoForm, _> (Ok None) [None; Some {|Key = 1; Value = "option 1"|}; Some {|Key = 2; Value = "option 2"|}] (fun x -> x |> Option.map (fun x -> x.Value) |> Option.defaultValue "<no choice>") "Choice optional"
         }
-        |> Auto.initForm
 
     let model =
         {
             AutoForm = autoForm
-            AutoFormValidationError = None
+            AutoFormValidationError = validate autoForm |> transformValidation
         }
     model, Cmd.none
 

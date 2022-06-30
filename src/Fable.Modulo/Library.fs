@@ -5,6 +5,14 @@ open Fable.React
 open Fable.React.Props
 open Browser.Types
 
+/// Utility functions
+module Helpers =
+    /// Transform the list to options and add None at the beginning
+    let inline optionValues<'t> (x : 't seq) =
+        Seq.append (seq [None]) (x |> Seq.map Some)
+
+    
+
 /// Helpers to parse the string inserted by the user
 module Parsers =
     /// Returns Ok None if the string is empty, else wraps the given parser's value in Option
@@ -205,7 +213,7 @@ type FormSelectModel<'f, 't> =
         /// Adds an empty element if true
         AddEmptySelection : bool
         /// The error to display when no selection has been made
-        EmptyErrorString : string
+        EmptyErrorMessage : string
         /// Layout options
         Layout : FormFieldLayout
     }
@@ -411,7 +419,7 @@ module FormSelectModel =
         // by default adds an empty invalid selection if the data type is not Option<_>
         let isNotOption = typedefof<'t> <> typedefof<Option<_>>
 
-        let emptyErrorString =
+        let emptyErrorMessage =
             match initialValue with
             | Error e -> e
             | _ -> "please choose a value"
@@ -424,7 +432,7 @@ module FormSelectModel =
             Updater = updater
             Validator = None
             AddEmptySelection = isNotOption
-            EmptyErrorString = emptyErrorString
+            EmptyErrorMessage = emptyErrorMessage
             Layout = FormFieldLayout.Empty(isNotOption)
         }
 
@@ -459,7 +467,7 @@ module FormSelectModel =
     /// If called with 'true' an empty, invalid choice is added at the start of the list
     let withEmptySelection add item = {item with AddEmptySelection = add}
     /// Set the error message in case of no choice
-    let withEmptyErrorString error item = {item with EmptyErrorString = error}
+    let withEmptyErrorMessage error item = {item with EmptyErrorMessage = error}
     /// Replace the available values
     let withValues values item = 
         // check that the initial value is contained in the available values
@@ -565,7 +573,7 @@ module View =
         let inline onChange<'f, 't> (form : 'f) (item : FormSelectModel<'f, 't>) (messageDispatcher : 'f -> unit) (ev : Event) = 
             let value = 
                 if String.IsNullOrWhiteSpace ev.Value && item.AddEmptySelection then
-                    Error item.EmptyErrorString
+                    Error item.EmptyErrorMessage
                 else
                     item.Values |> Array.find (fun x -> item.KeyFunction x = ev.Value) |> Ok
             let item = {item with Value = value}
@@ -701,9 +709,9 @@ let inline isValid<'f> (f : 'f) =
 module Auto =
     let inline private u _ _ = failwithf "looks like you forgot to call 'initForm'"
 
-    /// Build a FormFieldModel automatically given the initial value
-    let inline field<'f, 't> (initialValue : Result<'t, string>) =
-        let inline i x = x |> unbox<FormInputModel<'f, 't>> |> FormFieldModel.Input
+    /// Build a FormInputModel automatically given the initial value
+    let inline inputField<'f, 't> (initialValue : Result<'t, string>) =
+        let inline i x = x |> unbox<FormInputModel<'f, 't>> |> Some
 
         if typeof<'t> = typeof<string> then
             FormInputModel.stringField (initialValue |> box |> unbox<Result<string, string>>) u |> box |> i
@@ -729,18 +737,38 @@ module Auto =
             FormInputModel.dateTimeField (initialValue |> box |> unbox<Result<DateTimeOffset, string>>) u |> box |> i
         elif typeof<'t> = typeof<option<DateTimeOffset>> then
             FormInputModel.dateTimeOptionField (initialValue |> box |> unbox<Result<DateTimeOffset option, string>>) u |> box |> i
-        elif typeof<'t> = typeof<bool> then
-            FormCheckboxModel.create (initialValue |> box |> unbox<Result<bool, string>>) u |> box |> unbox<FormCheckboxModel<'f>> |> FormFieldModel.Checkbox
         else
-            failwithf "field type not supported yet: %s" (typeof<'t>.Name)
+            None
+
+    /// Build a FormInputModel automatically given the initial value
+    let inline checkboxField<'f> (initialValue : Result<bool, string>) =
+        FormCheckboxModel.create (initialValue |> box |> unbox<Result<bool, string>>) u 
+        |> box 
+        |> unbox<FormCheckboxModel<'f>> 
+
+    /// Build a FormFieldModel automatically given the initial value
+    let inline field<'f, 't> (initialValue : Result<'t, string>) =
+        let inline i x = x |> unbox<FormInputModel<'f, 't>> |> FormFieldModel.Input
+
+        match inputField<'f, 't> initialValue with
+        | Some f -> f |> FormFieldModel.Input
+        | None ->
+            if typeof<'t> = typeof<bool> then
+                checkboxField<'f> (initialValue |> box |> unbox<Result<bool, string>>) |> FormFieldModel.Checkbox
+            else
+                failwithf "field type not supported yet: %s" (typeof<'t>.Name)
 
     /// Build a FormFieldModel automatically given the initial value and the field's label
     let inline field'<'f, 't> (initialValue : Result<'t, string>) fieldLabel =
         field<'f, 't> initialValue |> FormFieldModel.withLabel fieldLabel
 
     /// Build a FormFieldModel from the given initial value, available choices and value label-generating function
+    let inline selectRaw<'f, 't> (initialValue : Result<'t, string>) (values : 't seq) (labelFunction : 't -> string) =
+        FormSelectModel.create<'f, 't> initialValue values labelFunction u
+    
+    /// Build a FormFieldModel from the given initial value, available choices and value label-generating function
     let inline select<'f, 't> (initialValue : Result<'t, string>) (values : 't seq) (labelFunction : 't -> string) =
-        FormSelectModel.create<'f, 't> initialValue values labelFunction u |> FormFieldModel.Select
+        selectRaw initialValue values labelFunction |> FormFieldModel.Select
 
     /// Build a FormFieldModel from the given initial value, available choices, value label-generating function and the field's label
     let inline select'<'f, 't> (initialValue : Result<'t, string>) (values : 't seq) (labelFunction : 't -> string) fieldLabel =
@@ -967,4 +995,107 @@ module Auto =
                     for extra in extraElements do
                         extra
                 ]
+
+type InputBuilder() =
+    member inline self.Yield<'f, 't>(_) =
+        match Auto.inputField<'f, 't> (Error "please fill me") with
+        | None -> failwithf "unsupported type: '%s'" typeof<'t>.Name
+        | Some x -> x
+
+    [<CustomOperation("text")>]
+    member inline __.Text<'f, 't>(s : FormInputModel<'f, 't>, t) = {s with Text = t}
     
+    [<CustomOperation("value")>]
+    member inline __.Value<'f, 't>(s : FormInputModel<'f, 't>, x : 't) = {s with Value = Ok x}
+
+    [<CustomOperation("error")>]
+    member inline __.Error<'f, 't>(s : FormInputModel<'f, 't>, x : string) = {s with Value = Error x}
+
+    [<CustomOperation("parser")>]
+    member inline __.Parser<'f, 't>(s : FormInputModel<'f, 't>, x) = {s with Parser = x}
+
+    [<CustomOperation("validator")>]
+    member inline __.Validator<'f, 't>(s : FormInputModel<'f, 't>, x) = s |> FormInputModel.withValidator x
+
+    [<CustomOperation("label")>]
+    member inline __.Label<'f, 't>(s : FormInputModel<'f, 't>, x) = s |> FormInputModel.withLabel x
+    
+    [<CustomOperation("placeholder")>]
+    member inline __.PlaceHolder<'f, 't>(s : FormInputModel<'f, 't>, x) = s |> FormInputModel.withPlaceholder x
+
+    [<CustomOperation("tooltip")>]
+    member inline __.Tooltip<'f, 't>(s : FormInputModel<'f, 't>, x) = s |> FormInputModel.withTooltip x
+    
+    member inline __.Run<'f, 't>(x : FormInputModel<'f, 't>) =
+        x |> FormFieldModel.Input
+
+type CheckboxBuilder() =
+    member inline self.Yield<'f>(_) =
+        Auto.checkboxField<'f> (Error "please fill me")
+    
+    [<CustomOperation("value")>]
+    member inline __.Value<'f>(s : FormCheckboxModel<'f>, x : bool) = {s with Value = Ok x}
+
+    [<CustomOperation("error")>]
+    member inline __.Error<'f>(s : FormCheckboxModel<'f>, x : string) = {s with Value = Error x}
+
+    [<CustomOperation("validator")>]
+    member inline __.Validator<'f>(s : FormCheckboxModel<'f>, x) = s |> FormCheckboxModel.withValidator x
+
+    [<CustomOperation("label")>]
+    member inline __.Label<'f>(s : FormCheckboxModel<'f>, x) = s |> FormCheckboxModel.withLabel x
+        
+    [<CustomOperation("placeholder")>]
+    member inline __.PlaceHolder<'f>(s : FormCheckboxModel<'f>, x) = s |> FormCheckboxModel.withPlaceholder x
+
+    [<CustomOperation("tooltip")>]
+    member inline __.Tooltip<'f>(s : FormCheckboxModel<'f>, x) = s |> FormCheckboxModel.withTooltip x
+    
+    member inline __.Run<'f, 't>(x : FormCheckboxModel<'f>) =
+        x |> FormFieldModel.Checkbox |> box |> unbox<FormFieldModel<'f, bool>>
+        
+type SelectBuilder() =
+    member inline self.Yield<'f, 't>(_) =
+        Auto.selectRaw<'f, 't> (Error "please fill me") [] (fun _ -> failwithf "label function not provided")
+        |> box
+        |> unbox<FormSelectModel<'f, 't>>
+
+    [<CustomOperation("values")>]
+    member inline __.Values(s : FormSelectModel<'f, 't>, x : 't seq) = s |> FormSelectModel.withValues x
+
+    [<CustomOperation("value_label")>]
+    member inline __.ValueLabel(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withValueLebel x
+
+    [<CustomOperation("value")>]
+    member inline __.Value(s : FormSelectModel<'f, 't>, x) = {s with Value = Ok x}
+
+    [<CustomOperation("error")>]
+    member inline __.Error(s : FormSelectModel<'f, 't>, x) = {s with Value = Error x}
+
+    [<CustomOperation("key_function")>]
+    member inline __.KeyFunction(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withKeyFunction x
+
+    [<CustomOperation("validator")>]
+    member inline __.Validator(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withValidator x
+
+    [<CustomOperation("empty_selection")>]
+    member inline __.EmptySelection(s : FormSelectModel<'f, 't>) = s |> FormSelectModel.withEmptySelection true
+
+    [<CustomOperation("empty_error_message")>]
+    member inline __.EmptyErrorMessage(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withEmptyErrorMessage x
+
+    [<CustomOperation("label")>]
+    member inline __.Label<'f, 't>(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withLabel x
+    
+    [<CustomOperation("placeholder")>]
+    member inline __.PlaceHolder<'f, 't>(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withPlaceholder x
+
+    [<CustomOperation("tooltip")>]
+    member inline __.Tooltip<'f, 't>(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withTooltip x
+    
+    member inline __.Run<'f, 't>(x : FormSelectModel<'f, 't>) =
+        x |> FormFieldModel.Select |> box |> unbox<FormFieldModel<'f, 't>>
+        
+let input = InputBuilder()
+let checkbox = CheckboxBuilder()
+let select = SelectBuilder()
