@@ -1,6 +1,10 @@
-<PackageLicenseUrl>https://github.com/avalente/fable-modulo/blob/master/src/Fable.Modulo/LICENSE.txt</PackageLicenseUrl>
-<PackageProjectUrl>https://avalente.github.io</PackageProjectUrl>
-<RepositoryUrl>https://github.com/avalente/fable-modulo</RepositoryUrl>
-<FsDocsNavbarPosition>fixed-left</FsDocsNavbarPosition>
-<FsDocsWarnOnMissingDocs>true</FsDocsWarnOnMissingDocs>
-<FsDocsTheme>default</FsDocsTheme>
+<Project>
+    <PropertyGroup>
+        <PackageLicenseUrl>https://github.com/avalente/fable-modulo/blob/master/src/Fable.Modulo/LICENSE.txt</PackageLicenseUrl>
+        <PackageProjectUrl>https://avalente.github.io</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/avalente/fable-modulo</RepositoryUrl>
+        <FsDocsNavbarPosition>fixed-left</FsDocsNavbarPosition>
+        <FsDocsWarnOnMissingDocs>true</FsDocsWarnOnMissingDocs>
+        <FsDocsTheme>default</FsDocsTheme>
+    </PropertyGroup>
+</Project>
