@@ -43,3 +43,9 @@ jobs:
       with:
         name: docs
         path: release/docs/
+    - name: Deploy docs
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        external_repository: avalente/avalente.github.io
+        publish_dir: ./release/docs/
