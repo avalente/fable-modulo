@@ -49,3 +49,7 @@ jobs:
         deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
         external_repository: avalente/avalente.github.io
         publish_dir: ./release/docs/
+    - name: Push package
+      run: dotnet nuget push Fable.Modulo.${VERSION}.nupkg --api-key ${NUGET_KEY}
+      env:
+        NUGET_KEY: ${{ secrets.NUGET_KEY }}
