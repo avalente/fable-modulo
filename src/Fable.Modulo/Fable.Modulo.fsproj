@@ -8,7 +8,7 @@
     <PropertyGroup>
     <PackageId>Fable.Modulo</PackageId>
     <Title>Fable.Modulo</Title>
-    <Version>1.0.3</Version>
+    <Version>0.0.1</Version>
     <Authors>Angelantonio Valente</Authors>
     <Description>Form manager for Fable</Description>
     <PackageProjectUrl>https://github.com/avalente/fable-modulo</PackageProjectUrl>
