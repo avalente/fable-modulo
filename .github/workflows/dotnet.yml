@@ -39,5 +39,7 @@ jobs:
       with:
         name: package
         path: release/Fable.Modulo.${{env.VERSION}}.nupkg
+    - uses: actions/upload-artifact@v3
+      with:
         name: docs
         path: release/docs/
