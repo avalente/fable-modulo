@@ -30,3 +30,7 @@ jobs:
       run: dotnet test --verbosity normal
     - name: Pack
       run: dotnet pack --configuration Release /p:Version=${VERSION} --output release
+    - uses: actions/upload-artifact@v3
+      with:
+        name: package
+        path: release/Fable.Modulo.${VERSION}.nupkg
