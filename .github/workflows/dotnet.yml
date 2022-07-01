@@ -23,6 +23,8 @@ jobs:
         git branch --remote --contains | grep origin/master
     - name: Set VERSION variable from tag
       run: echo "VERSION=${GITHUB_REF/refs\/tags\/v/}" >> $GITHUB_ENV
+    - name: Restore dotnet tools
+      run: dotnet tool restore
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
@@ -31,7 +33,11 @@ jobs:
       run: dotnet test --verbosity normal
     - name: Pack
       run: dotnet pack --configuration Release /p:Version=${VERSION} --output release
+    - name: Documentation
+      run: mkdir release/docs && dotnet fsdocs build --clean --output release/docs --properties Configuration=Release Version=${VERSION} --strict
     - uses: actions/upload-artifact@v3
       with:
         name: package
         path: release/Fable.Modulo.${{env.VERSION}}.nupkg
+        name: docs
+        path: release/docs/
