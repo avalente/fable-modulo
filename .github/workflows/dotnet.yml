@@ -34,7 +34,7 @@ jobs:
     - name: Pack
       run: dotnet pack --configuration Release /p:Version=${VERSION} --output release
     - name: Documentation
-      run: mkdir release/docs && dotnet fsdocs build --clean --output release/docs --properties Configuration=Release Version=${VERSION} --parameters root https://avalente.github.io/ --strict
+      run: mkdir release/docs && dotnet fsdocs build --clean --output release/docs --properties Configuration=Release Version=${VERSION} --parameters root https://avalente.github.io/ fsdocs-license-link https://github.com/avalente/fable-modulo/blob/master/src/Fable.Modulo/LICENSE.txt fsdocs-collection-name-link https://avalente.github.io/ --strict
     - uses: actions/upload-artifact@v3
       with:
         name: package

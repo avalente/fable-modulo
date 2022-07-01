@@ -307,6 +307,9 @@ The project placed in `Examples/Plain` shows how you can implement your own view
 In order to further reduce the boilerplate code `Fable.Modulo` provides the `cref:T:Fable.Modulo.Auto.View` module that uses reflection to generate
 react elements automatically from the model record. 
 
+The `basicForm` helper creates a form with one `<div>` for each form field; each `div` contains a `<label>` followed by the field itself (depending on the field model type). You can customize the look by implementing `css` rules for the classes listed in `cref:T:Fable.Modulo.Auto.View.Classes`.
+If you need a different structure you could `fieldsBase` and arrange the returned `cref:T:Fable.Modulo.Auto.View.Field`s as you please.
+
 The module `Bulma` implements an automatic form and applies the structure and styling from the [bulma](https://bulma.io/) framework.
 
 
