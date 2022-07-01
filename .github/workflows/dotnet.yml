@@ -34,4 +34,4 @@ jobs:
     - uses: actions/upload-artifact@v3
       with:
         name: package
-        path: release/Fable.Modulo.${{VERSION}}.nupkg
+        path: release/Fable.Modulo.${{env.VERSION}}.nupkg
