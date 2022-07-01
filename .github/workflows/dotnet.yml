@@ -50,6 +50,6 @@ jobs:
         external_repository: avalente/avalente.github.io
         publish_dir: ./release/docs/
     - name: Push package
-      run: dotnet nuget push Fable.Modulo.${VERSION}.nupkg --api-key ${NUGET_KEY}
+      run: dotnet nuget push release/Fable.Modulo.${VERSION}.nupkg --api-key ${NUGET_KEY} --source https://api.nuget.org/v3/index.json
       env:
         NUGET_KEY: ${{ secrets.NUGET_KEY }}
