@@ -195,6 +195,9 @@ two arguments:
 
 Refer to the [modeling](#Modeling) section for further informations.
 
+**WARNING**: if you are using the "automatic" mode don't forget to call ```cref:M:Fable.Modulo.Auto.initForm``1``` on the record that represents your
+form: this call will create the [_updater_](#Updater) functions.
+
 #### Message
 
 A single message is used for the state change of every field in the form:

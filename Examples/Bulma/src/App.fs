@@ -21,6 +21,7 @@ type MyOtherType =
 type AutoField<'t> = FormFieldModel<AutoForm, 't>
 and AutoForm =
     {
+        Id : AutoField<int>
         String : AutoField<string>
         FloatOption : AutoField<float option>
         Checkbox : AutoField<bool>
@@ -44,9 +45,17 @@ let transformValidation x =
 let init _ =
     let autoForm = 
         Auto.initForm {
+            Id = input {
+                value 0
+                text "0"
+                label' "Id"
+                disabled true
+                size 1
+            }
             String = input {
                 value ""
                 label' "A field taking a string"
+                size 5
             }
             FloatOption = input {
                 error "please fill me"

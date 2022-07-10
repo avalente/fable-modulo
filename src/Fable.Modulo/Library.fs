@@ -136,6 +136,8 @@ type FormFieldLayout =
         IsRequired : bool
         /// The size of this field relative to the other fields
         RelativeSize : int
+        /// The field is disabled
+        Disabled : bool
     }
 
     static member Empty(required : bool) =
@@ -145,6 +147,7 @@ type FormFieldLayout =
             Tooltip = No
             IsRequired = required
             RelativeSize = 1
+            Disabled = false
         }
 
 /// <summary>Functions to handle a field's layout properties. See <see cref="T:Fable.Modulo.FormFieldLayout" /> type</summary>
@@ -153,6 +156,8 @@ module FormFieldLayout =
     let placeholder l = l.Placeholder
     let tooltip l = l.Tooltip
     let relativeSize l = l.RelativeSize
+    let disabled l = l.Disabled
+    let isRequired l = l.IsRequired
     
 /// The form field model, used for "input" elements
 // in order to keep the implementation as simple as possible, the "fixed" and "runtime" parts
@@ -343,6 +348,8 @@ module FormInputModel =
     let withRelativeSize s (item : FormInputModel<_, _>) = {item with Layout = {item.Layout with RelativeSize = s}}
     /// Set the formatter
     let withFormatter formatter (item : FormInputModel<_, _>) = {item with Formatter = formatter}
+    /// Disable the field
+    let withDisabled x (item : FormInputModel<_, _>) = {item with Layout = {item.Layout with Disabled = x}}
 
     // constructors
 
@@ -456,6 +463,8 @@ module FormCheckboxModel =
     let withTooltip v (item : FormCheckboxModel<_>) = {item with Layout = {item.Layout with Tooltip = v}}
     /// Set the relative size
     let withRelativeSize s (item : FormCheckboxModel<_>) = {item with Layout = {item.Layout with RelativeSize = s}}
+    /// Disable the field
+    let withDisabled x (item : FormCheckboxModel<_>) = {item with Layout = {item.Layout with Disabled = x}}
 
 /// <summary>Functions related to the <see cref="T:Fable.Modulo.FormSelectModel`2" /> type</summary>
 module FormSelectModel =
@@ -541,6 +550,8 @@ module FormSelectModel =
             | Ok x when values |> Seq.contains x |> not -> Error "choose an item"
             | e -> e
         {item with Values = values |> Seq.toArray; Value = newValue}
+    /// Disable the field
+    let withDisabled x (item : FormSelectModel<_, _>) = {item with Layout = {item.Layout with Disabled = x}}
 
 /// <summary>Functions related to the <see cref="T:Fable.Modulo.FormFieldModel`2" /> type</summary>
 module FormFieldModel =
@@ -579,6 +590,13 @@ module FormFieldModel =
         | Select x -> FormSelectModel.withRelativeSize t x |> Select
         | Checkbox x -> FormCheckboxModel.withRelativeSize t x |> Checkbox
 
+    /// Disable the field
+    let withDisabled t x = 
+        match x with
+        | Input x -> FormInputModel.withDisabled t x |> Input
+        | Select x -> FormSelectModel.withDisabled t x |> Select
+        | Checkbox x -> FormCheckboxModel.withDisabled t x |> Checkbox
+    
     /// Extract the label
     let label<'f, 't> (item : FormFieldModel<'f, 't>) = item |> layout |> FormFieldLayout.label
 
@@ -839,7 +857,7 @@ module Auto =
             else
                 failwithf "field type not supported yet: %s" (typeof<'t>.Name)
 
-    /// Build a FormFieldModel automatically given the initial value and the field's label
+    /// Build a FormFieldModel automatically given the initial value and the label
     let inline field'<'f, 't> (initialValue : Result<'t, string>) fieldLabel =
         field<'f, 't> initialValue |> FormFieldModel.withLabel fieldLabel
 
@@ -851,7 +869,7 @@ module Auto =
     let inline select<'f, 't> (initialValue : Result<'t, string>) (values : 't seq) (labelFunction : 't -> string) =
         selectRaw initialValue values labelFunction |> FormFieldModel.Select
 
-    /// Build a FormFieldModel from the given initial value, available choices, value label-generating function and the field's label
+    /// Build a FormFieldModel from the given initial value, available choices, value label-generating function and the label
     let inline select'<'f, 't> (initialValue : Result<'t, string>) (values : 't seq) (labelFunction : 't -> string) fieldLabel =
         select<'f, 't> initialValue values labelFunction |> FormFieldModel.withLabel fieldLabel
 
@@ -990,7 +1008,12 @@ module Auto =
                     let labelText = field |> FormFieldModel.label |> Option.defaultValue pi.Name
                     let label = label (labelProps @ [HtmlFor pi.Name]) [str labelText]
 
-                    let commonProps : List<IHTMLProp> = [Name pi.Name; AutoFocus (i = 0)]
+                    let commonProps : List<IHTMLProp> = 
+                        [
+                            Name pi.Name
+                            AutoFocus (i = 0)
+                            ReadOnly (field |> FormFieldModel.layout).Disabled
+                        ]
 
                     let error = field.Error
 
@@ -1205,6 +1228,14 @@ type InputBuilder() =
     member inline __.LabelPlaceHolder<'f, 't>(s : FormInputModel<'f, 't>, x) = 
         s |> FormInputModel.withLabel x |> FormInputModel.withPlaceholder x
 
+    /// Set the field's relative size text
+    [<CustomOperation("size")>]
+    member inline __.RelativeSize<'f, 't>(s : FormInputModel<'f, 't>, x) = s |> FormInputModel.withRelativeSize x
+
+    /// Disable the field
+    [<CustomOperation("disabled")>]
+    member inline __.Disabled<'f, 't>(s : FormInputModel<'f, 't>, x) = s |> FormInputModel.withDisabled x
+    
     ///[omit]
     member inline __.Run<'f, 't>(x : FormInputModel<'f, 't>) =
         x |> FormFieldModel.Input
@@ -1237,23 +1268,31 @@ type CheckboxBuilder() =
 
     /// Set the field's tooltip text
     [<CustomOperation("tooltip")>]
-    member inline __.Tooltip<'f, 't>(s : FormCheckboxModel<'t>, x : TooltipKind) = s |> FormCheckboxModel.withTooltip x
+    member inline __.Tooltip<'f>(s : FormCheckboxModel<'f>, x : TooltipKind) = s |> FormCheckboxModel.withTooltip x
 
     /// Set the field's tooltip text
     [<CustomOperation("tooltip")>]
-    member inline __.Tooltip<'f, 't>(s : FormCheckboxModel<'t>, x : string) = s |> FormCheckboxModel.withTooltipText x
+    member inline __.Tooltip<'f>(s : FormCheckboxModel<'f>, x : string) = s |> FormCheckboxModel.withTooltipText x
 
     /// Set the field's tooltip text
     [<CustomOperation("tooltip")>]
-    member inline __.Tooltip<'f, 't>(s : FormCheckboxModel<'t>) = s |> FormCheckboxModel.withTooltip Value
+    member inline __.Tooltip<'f>(s : FormCheckboxModel<'f>) = s |> FormCheckboxModel.withTooltip Value
     
     /// Set the field's attached label and placeholder
     [<CustomOperation("label'")>]
-    member inline __.LabelPlaceHolder<'f, 't>(s : FormCheckboxModel<'t>, x) = 
+    member inline __.LabelPlaceHolder<'f>(s : FormCheckboxModel<'f>, x) = 
         s |> FormCheckboxModel.withLabel x |> FormCheckboxModel.withPlaceholder x
     
+    /// Set the field's relative size text
+    [<CustomOperation("size")>]
+    member inline __.RelativeSize<'f>(s : FormCheckboxModel<'f>, x) = s |> FormCheckboxModel.withRelativeSize x
+
+    /// Disable the field
+    [<CustomOperation("disabled")>]
+    member inline __.Disabled<'f>(s : FormCheckboxModel<'f>, x) = s |> FormCheckboxModel.withDisabled x
+
     ///[omit]
-    member inline __.Run<'f, 't>(x : FormCheckboxModel<'f>) =
+    member inline __.Run<'f>(x : FormCheckboxModel<'f>) =
         x |> FormFieldModel.Checkbox |> box |> unbox<FormFieldModel<'f, bool>>
         
 /// Computation expression used to build a "select" field model
@@ -1324,6 +1363,14 @@ type SelectBuilder() =
     [<CustomOperation("label'")>]
     member inline __.LabelPlaceHolder<'f, 't>(s : FormSelectModel<'f, 't>, x) = 
         s |> FormSelectModel.withLabel x |> FormSelectModel.withPlaceholder x
+    
+    /// Set the field's relative size text
+    [<CustomOperation("size")>]
+    member inline __.RelativeSize<'f, 't>(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withRelativeSize x
+
+    /// Disable the field
+    [<CustomOperation("disabled")>]
+    member inline __.Disabled<'f, 't>(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withDisabled x
     
     ///[omit]
     member inline __.Run<'f, 't>(x : FormSelectModel<'f, 't>) =
