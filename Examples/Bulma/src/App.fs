@@ -46,14 +46,14 @@ let init _ =
         Auto.initForm {
             String = input {
                 value ""
-                label "A field taking a string"
+                label' "A field taking a string"
             }
             FloatOption = input {
                 error "please fill me"
                 label "A float optional value" 
                 validator (fun _ v -> match v with | None -> Ok None | Some v when v < 100.0 -> Ok (Some v) | _ -> Error "The value should be < 100")
                 placeholder "please insert a value < 100"
-                tooltip "This is a float input"
+                tooltip
             }
             Checkbox = checkbox {
                 value false
@@ -100,7 +100,7 @@ let view model dispatch =
             div [ClassName "column"] [
                 div [ClassName "box"] [
                     h2 [ClassName "title is-5"] [str "Automatic form with Bulma styling"]
-                    Auto.View.Bulma.form model.AutoForm (UpdateAutoForm >> dispatch) None [
+                    Auto.View.Bulma.form model.AutoForm (UpdateAutoForm >> dispatch) (Some "is-small") [
                         button [ClassName "button is-link"; OnClick (fun e -> dispatch ValidateAutoForm; e.preventDefault())] [str "Validate"]
                     ]
                 ]

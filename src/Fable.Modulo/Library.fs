@@ -114,6 +114,15 @@ type IFormFieldModel<'f, 't> =
     /// The underlying field's value formatted as a string
     abstract member FormattedValue : string
 
+/// Kind of tooltip
+type TooltipKind =
+    /// Fixed text
+    | Text of string
+    /// Underlying value
+    | Value
+    /// No tooltip
+    | No
+
 /// Layout-related data
 type FormFieldLayout =
     {
@@ -122,17 +131,20 @@ type FormFieldLayout =
         /// The field's placeholder
         Placeholder : string option
         /// Tooltip text
-        Tooltip : string option
+        Tooltip : TooltipKind
         /// If true the field is required. Only used for UI purposes
         IsRequired : bool
+        /// The size of this field relative to the other fields
+        RelativeSize : int
     }
 
     static member Empty(required : bool) =
         {
             Label = None
             Placeholder = None
-            Tooltip = None
+            Tooltip = No
             IsRequired = required
+            RelativeSize = 1
         }
 
 /// <summary>Functions to handle a field's layout properties. See <see cref="T:Fable.Modulo.FormFieldLayout" /> type</summary>
@@ -140,6 +152,7 @@ module FormFieldLayout =
     let label l = l.Label
     let placeholder l = l.Placeholder
     let tooltip l = l.Tooltip
+    let relativeSize l = l.RelativeSize
     
 /// The form field model, used for "input" elements
 // in order to keep the implementation as simple as possible, the "fixed" and "runtime" parts
@@ -323,7 +336,11 @@ module FormInputModel =
     /// Set the placeholder
     let withPlaceholder placeholder (item : FormInputModel<_, _>) = {item with Layout = {item.Layout with Placeholder = Some placeholder}}
     /// Set the tooltip text
-    let withTooltip text (item : FormInputModel<_, _>) = {item with Layout = {item.Layout with Tooltip = Some text}}
+    let withTooltipText text (item : FormInputModel<_, _>) = {item with Layout = {item.Layout with Tooltip = Text text}}
+    /// Set the tooltip text
+    let withTooltip v (item : FormInputModel<_, _>) = {item with Layout = {item.Layout with Tooltip = v}}
+    /// Set the relative size
+    let withRelativeSize s (item : FormInputModel<_, _>) = {item with Layout = {item.Layout with RelativeSize = s}}
     /// Set the formatter
     let withFormatter formatter (item : FormInputModel<_, _>) = {item with Formatter = formatter}
 
@@ -434,7 +451,11 @@ module FormCheckboxModel =
     /// Set the placeholder
     let withPlaceholder placeholder (item : FormCheckboxModel<_>) = {item with Layout = {item.Layout with Placeholder = Some placeholder}}
     /// Set the tooltip text
-    let withTooltip text (item : FormCheckboxModel<_>) = {item with Layout = {item.Layout with Tooltip = Some text}}
+    let withTooltipText text (item : FormCheckboxModel<_>) = {item with Layout = {item.Layout with Tooltip = Text text}}
+    /// Set the tooltip
+    let withTooltip v (item : FormCheckboxModel<_>) = {item with Layout = {item.Layout with Tooltip = v}}
+    /// Set the relative size
+    let withRelativeSize s (item : FormCheckboxModel<_>) = {item with Layout = {item.Layout with RelativeSize = s}}
 
 /// <summary>Functions related to the <see cref="T:Fable.Modulo.FormSelectModel`2" /> type</summary>
 module FormSelectModel =
@@ -501,9 +522,13 @@ module FormSelectModel =
     /// Set the placeholder
     let withPlaceholder placeholder (item : FormSelectModel<_, _>) = {item with Layout = {item.Layout with Placeholder = Some placeholder}}
     /// Set the tooltip text
-    let withTooltip text (item : FormSelectModel<_, _>) = {item with Layout = {item.Layout with Tooltip = Some text}}
+    let withTooltipText text (item : FormSelectModel<_, _>) = {item with Layout = {item.Layout with Tooltip = Text text}}
+    /// Set the tooltip
+    let withTooltip v (item : FormSelectModel<_, _>) = {item with Layout = {item.Layout with Tooltip = v}}
     /// Set the function to generate value labels
-    let withValueLebel f item = {item with ValueLabel = f}
+    let withValueLabel f item = {item with ValueLabel = f}
+    /// Set the relative size
+    let withRelativeSize s (item : FormSelectModel<_, _>) = {item with Layout = {item.Layout with RelativeSize = s}}
     /// If called with 'true' an empty, invalid choice is added at the start of the list
     let withEmptySelection add item = {item with AddEmptySelection = add}
     /// Set the error message in case of no choice
@@ -547,6 +572,13 @@ module FormFieldModel =
         | Select x -> FormSelectModel.withTooltip t x |> Select
         | Checkbox x -> FormCheckboxModel.withTooltip t x |> Checkbox
     
+    /// Set the relative size
+    let withRelativeSize t x = 
+        match x with
+        | Input x -> FormInputModel.withRelativeSize t x |> Input
+        | Select x -> FormSelectModel.withRelativeSize t x |> Select
+        | Checkbox x -> FormCheckboxModel.withRelativeSize t x |> Checkbox
+
     /// Extract the label
     let label<'f, 't> (item : FormFieldModel<'f, 't>) = item |> layout |> FormFieldLayout.label
 
@@ -903,6 +935,10 @@ module Auto =
                 Layout : FormFieldLayout
                 /// error from the form model underlying value, if any
                 Error : string option
+                /// string representation of the form model underlying value
+                FormattedValue : string
+                /// Name of the underlying type
+                TypeName : string
             }
          
         /// CSS classes
@@ -922,6 +958,11 @@ module Auto =
             /// <summary>the css class  <b>modulo-field-name-</b><em>&lt;name&gt;</em> , where 'name' is the form record field's name</summary>
             let FieldName x = sprintf "modulo-field-name-%s" x
             let FieldKind = function | Kind.Input -> InputField | Kind.Select -> SelectField | Kind.Checkbox -> CheckboxField
+            let FieldType n = sprintf "modulo-field-type-%s" n
+            let FieldSize n = sprintf "modulo-field-size-%d" n
+            
+            let concat (classes : string list) = ClassName (classes |> String.concat " ")
+
 
         /// <summary>
         /// A generator of HTML properties
@@ -953,6 +994,14 @@ module Auto =
 
                     let error = field.Error
 
+                    let typeName = 
+                        let a = pi.PropertyType.GetGenericArguments()
+                        let t = a.[a.Length-1]
+                        if t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<option<_>> then
+                            t.GetGenericArguments().[0].Name
+                        else
+                            t.Name
+
                     let f = 
                         {
                             Name = pi.Name
@@ -962,6 +1011,8 @@ module Auto =
                             Kind = Kind.Input
                             Layout = FormFieldModel.layout field
                             Error = error
+                            TypeName = if typeName = "" then "anonymous" else typeName
+                            FormattedValue = (field :> IFormFieldModel<_, _>).FormattedValue
                         }
 
                     match field with
@@ -986,10 +1037,18 @@ module Auto =
                             Classes.Field
                             Classes.FieldKind field.Kind
                             Classes.FieldName field.Name
+                            Classes.FieldType field.TypeName
+                            Classes.FieldSize field.Layout.RelativeSize
                             if field.Layout.IsRequired then Classes.Required
-                        ] |> String.concat " "
+                        ] |> Classes.concat
                         
-                    div [ClassName className; match field.Layout.Tooltip with | None -> () | Some t -> Title t] [
+                    let title =
+                        match field.Layout.Tooltip with
+                        | No -> ""
+                        | Text t -> t
+                        | Value -> field.FormattedValue
+
+                    div [className; if title <> "" then Title title] [
                         field.Label
                         field.Element
                     ]
@@ -1015,12 +1074,6 @@ module Auto =
                 let IsDanger = "is-danger"
                 let Fa kind = sprintf "fas fa-%s" kind
 
-                let concat (classes : string list) = ClassName (classes |> String.concat " ")
-                let add (className : string option) (classes : string list) = 
-                    match className with
-                    | None -> classes
-                    | Some x -> x :: classes
-
             /// Return a form with bulma's classes and required structure
             let inline form<'f> (f : 'f) messageDispatcher (sizeClass : string option) (extraElements : ReactElement seq) =
                 let inputProps idx name (error : string option) : List<IHTMLProp> = 
@@ -1040,10 +1093,18 @@ module Auto =
                                 Classes.Field
                                 Classes.FieldKind field.Kind
                                 Classes.FieldName field.Name
+                                Classes.FieldType field.TypeName
+                                Classes.FieldSize field.Layout.RelativeSize
                                 if field.Layout.IsRequired then Classes.Required
                             ] |> Classes.concat
                             
-                        div [className; match field.Layout.Tooltip with | None -> () | Some x -> Title x] [
+                        let title =
+                            match field.Layout.Tooltip with
+                            | No -> ""
+                            | Text t -> t
+                            | Value -> field.FormattedValue
+        
+                        div [className; if title <> "" then Title title] [
                             // for input and select display the label
                             match field.Kind with
                             | Kind.Input | Kind.Select -> field.Label
@@ -1129,7 +1190,20 @@ type InputBuilder() =
 
     /// Set the field's tooltip text
     [<CustomOperation("tooltip")>]
-    member inline __.Tooltip<'f, 't>(s : FormInputModel<'f, 't>, x) = s |> FormInputModel.withTooltip x
+    member inline __.Tooltip<'f, 't>(s : FormInputModel<'f, 't>, x : TooltipKind) = s |> FormInputModel.withTooltip x
+
+    /// Set the field's tooltip text
+    [<CustomOperation("tooltip")>]
+    member inline __.Tooltip<'f, 't>(s : FormInputModel<'f, 't>, x : string) = s |> FormInputModel.withTooltipText x
+
+    /// Set the field's tooltip text
+    [<CustomOperation("tooltip")>]
+    member inline __.Tooltip<'f, 't>(s : FormInputModel<'f, 't>) = s |> FormInputModel.withTooltip Value
+    
+    /// Set the field's attached label and placeholder
+    [<CustomOperation("label'")>]
+    member inline __.LabelPlaceHolder<'f, 't>(s : FormInputModel<'f, 't>, x) = 
+        s |> FormInputModel.withLabel x |> FormInputModel.withPlaceholder x
 
     ///[omit]
     member inline __.Run<'f, 't>(x : FormInputModel<'f, 't>) =
@@ -1163,7 +1237,20 @@ type CheckboxBuilder() =
 
     /// Set the field's tooltip text
     [<CustomOperation("tooltip")>]
-    member inline __.Tooltip<'f>(s : FormCheckboxModel<'f>, x) = s |> FormCheckboxModel.withTooltip x
+    member inline __.Tooltip<'f, 't>(s : FormCheckboxModel<'t>, x : TooltipKind) = s |> FormCheckboxModel.withTooltip x
+
+    /// Set the field's tooltip text
+    [<CustomOperation("tooltip")>]
+    member inline __.Tooltip<'f, 't>(s : FormCheckboxModel<'t>, x : string) = s |> FormCheckboxModel.withTooltipText x
+
+    /// Set the field's tooltip text
+    [<CustomOperation("tooltip")>]
+    member inline __.Tooltip<'f, 't>(s : FormCheckboxModel<'t>) = s |> FormCheckboxModel.withTooltip Value
+    
+    /// Set the field's attached label and placeholder
+    [<CustomOperation("label'")>]
+    member inline __.LabelPlaceHolder<'f, 't>(s : FormCheckboxModel<'t>, x) = 
+        s |> FormCheckboxModel.withLabel x |> FormCheckboxModel.withPlaceholder x
     
     ///[omit]
     member inline __.Run<'f, 't>(x : FormCheckboxModel<'f>) =
@@ -1183,7 +1270,7 @@ type SelectBuilder() =
 
     /// Set the function to produce the displayed text for a given value
     [<CustomOperation("value_label")>]
-    member inline __.ValueLabel(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withValueLebel x
+    member inline __.ValueLabel(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withValueLabel x
 
     /// Set the field's initial underlying value
     [<CustomOperation("value")>]
@@ -1223,7 +1310,20 @@ type SelectBuilder() =
 
     /// Set the field's tooltip text
     [<CustomOperation("tooltip")>]
-    member inline __.Tooltip<'f, 't>(s : FormSelectModel<'f, 't>, x) = s |> FormSelectModel.withTooltip x
+    member inline __.Tooltip<'f, 't>(s : FormSelectModel<'f, 't>, x : TooltipKind) = s |> FormSelectModel.withTooltip x
+
+    /// Set the field's tooltip text
+    [<CustomOperation("tooltip")>]
+    member inline __.Tooltip<'f, 't>(s : FormSelectModel<'f, 't>, x : string) = s |> FormSelectModel.withTooltipText x
+
+    /// Set the field's tooltip text
+    [<CustomOperation("tooltip")>]
+    member inline __.Tooltip<'f, 't>(s : FormSelectModel<'f, 't>) = s |> FormSelectModel.withTooltip Value
+    
+    /// Set the field's attached label and placeholder
+    [<CustomOperation("label'")>]
+    member inline __.LabelPlaceHolder<'f, 't>(s : FormSelectModel<'f, 't>, x) = 
+        s |> FormSelectModel.withLabel x |> FormSelectModel.withPlaceholder x
     
     ///[omit]
     member inline __.Run<'f, 't>(x : FormSelectModel<'f, 't>) =
