@@ -46,14 +46,13 @@ let init _ =
     let autoForm = 
         Auto.initForm {
             Id = input {
-                value 0
-                text "0"
+                value' 1
                 label' "Id"
                 disabled true
                 size 1
             }
             String = input {
-                value ""
+                raw_value (Ok "")
                 label' "A field taking a string"
                 size 5
             }

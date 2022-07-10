@@ -912,7 +912,7 @@ module Auto =
                 let field = Reflection.FSharpValue.GetRecordField(f, pi) |> unbox<IFormFieldModel<'f, _>>
                 pi.Name, field.FormattedValue
         ]
-
+    
     /// Initialize the form by attaching an "updater" to each field
     let inline initForm<'f>(f : 'f) =
         let fields =
@@ -1191,6 +1191,21 @@ type InputBuilder() =
     [<CustomOperation("value")>]
     member inline __.Value<'f, 't>(s : FormInputModel<'f, 't>, x : 't) = {s with Value = Ok x}
 
+    /// Set the underlying initial value and text of the input field
+    [<CustomOperation("value'")>]
+    member inline __.ValueAndText<'f, 't>(s : FormInputModel<'f, 't>, x : 't) = {s with Value = Ok x; Text = s.Formatter x}
+
+    /// Set the underlying initial value of the input field
+    [<CustomOperation("raw_value")>]
+    member inline __.RawValue<'f, 't>(s : FormInputModel<'f, 't>, x : Result<'t, string>) = {s with Value = x}
+
+    /// Set the underlying initial value and text of the input field
+    [<CustomOperation("raw_value'")>]
+    member inline __.RawValueAndText<'f, 't>(s : FormInputModel<'f, 't>, x : Result<'t, string>) = 
+        match x with
+        | Ok x -> {s with Value = Ok x; Text = s.Formatter x}
+        | Error _ -> {s with Value = x}
+
     /// Set the underlying initial value of the input field as "Error"
     [<CustomOperation("error")>]
     member inline __.Error<'f, 't>(s : FormInputModel<'f, 't>, x : string) = {s with Value = Error x}
@@ -1254,6 +1269,10 @@ type CheckboxBuilder() =
     [<CustomOperation("error")>]
     member inline __.Error<'f>(s : FormCheckboxModel<'f>, x : string) = {s with Value = Error x}
 
+    /// Set the underlying initial value of the input field
+    [<CustomOperation("raw_value")>]
+    member inline __.RawValue<'f, 't>(s : FormCheckboxModel<'f>, x) = {s with Value = x}
+    
     /// Set the field value's validator function
     [<CustomOperation("validator")>]
     member inline __.Validator<'f>(s : FormCheckboxModel<'f>, x) = s |> FormCheckboxModel.withValidator x
@@ -1318,6 +1337,10 @@ type SelectBuilder() =
     /// Set the underlying initial value of the input field as "Error"
     [<CustomOperation("error")>]
     member inline __.Error(s : FormSelectModel<'f, 't>, x) = {s with Value = Error x}
+
+    /// Set the underlying initial value of the input field
+    [<CustomOperation("raw_value")>]
+    member inline __.RawValue<'f, 't>(s : FormSelectModel<'f, 't>, x : Result<'t, string>) = {s with Value = x}
 
     /// Override the default key generator (defaulting to JSON.stringify)
     [<CustomOperation("key_function")>]
