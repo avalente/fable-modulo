@@ -1016,6 +1016,10 @@ module Auto =
                 let Fa kind = sprintf "fas fa-%s" kind
 
                 let concat (classes : string list) = ClassName (classes |> String.concat " ")
+                let add (className : string option) (classes : string list) = 
+                    match className with
+                    | None -> classes
+                    | Some x -> x :: classes
 
             /// Return a form with bulma's classes and required structure
             let inline form<'f> (f : 'f) messageDispatcher (sizeClass : string option) (extraElements : ReactElement seq) =
@@ -1037,9 +1041,9 @@ module Auto =
                                 Classes.FieldKind field.Kind
                                 Classes.FieldName field.Name
                                 if field.Layout.IsRequired then Classes.Required
-                            ] |> String.concat " "
+                            ] |> Classes.concat
                             
-                        div [ClassName className; match field.Layout.Tooltip with | None -> () | Some x -> Title x] [
+                        div [className; match field.Layout.Tooltip with | None -> () | Some x -> Title x] [
                             // for input and select display the label
                             match field.Kind with
                             | Kind.Input | Kind.Select -> field.Label
@@ -1058,7 +1062,16 @@ module Auto =
                                     ]
     
                                 | Kind.Select -> 
-                                    div [Classes.concat [Classes.Select; match field.Error with | None -> () | Some _ -> Classes.IsDanger; match sizeClass with | None -> () | Some x -> x]] [field.Element]
+                                    let classes = 
+                                        [
+                                            Classes.Select
+                                            match field.Error with | Some _ -> Classes.IsDanger | None -> () 
+                                            match sizeClass with | Some x -> x | None -> () 
+                                        ]
+                                        |> Classes.concat
+
+                                    div [classes] [field.Element]
+
                                 | Kind.Checkbox ->
                                     label [Classes.concat [Classes.Checkbox; match sizeClass with | None -> () | Some x -> x]] [
                                         field.Element
