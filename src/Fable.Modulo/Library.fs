@@ -691,7 +691,7 @@ module View =
     /// that are set automatically
     let fieldBase form item messageDispatcher (props : IHTMLProp list) =
         let props' = props @ [
-            DefaultValue (FormInputModel.defaultValue item)
+            Fable.React.Props.Value (FormInputModel.defaultValue item)
             OnChange (FormInputModel.onChange form item messageDispatcher)
             match item.Layout.Placeholder with | None -> () | Some t -> Placeholder t
         ] 
@@ -710,7 +710,7 @@ module View =
     let checkboxBase<'f> (form : 'f) (item : FormCheckboxModel<'f>) messageDispatcher (props : IHTMLProp list) =
         input [
             Type "checkbox"
-            DefaultValue (FormCheckboxModel.defaultValue item)
+            Fable.React.Props.Value (FormCheckboxModel.defaultValue item)
             OnChange (FormCheckboxModel.onChange form item messageDispatcher)
             match item.Layout.Placeholder with | None -> () | Some t -> Placeholder t
         ]
@@ -721,7 +721,7 @@ module View =
     /// you can pass its HTML properties but the 'Value' is set automatically.
     let selectBase<'f, 't> (form : 'f) (item : FormSelectModel<'f, 't>) messageDispatcher (selectProps : IHTMLProp list) (optionProps : IHTMLProp list) =
         let props' =  selectProps @ [
-            DefaultValue (FormSelectModel.defaultValue item)
+            Fable.React.Props.Value (FormSelectModel.defaultValue item)
             OnChange (FormSelectModel.onChange form item messageDispatcher)
             match item.Layout.Placeholder with | None -> () | Some t -> Placeholder t
         ]
@@ -1025,23 +1025,24 @@ module Auto =
                         else
                             t.Name
 
-                    let f = 
-                        {
-                            Name = pi.Name
-                            Label = label
-                            Element = str ""
-                            LabelText = field |> FormFieldModel.label
-                            Kind = Kind.Input
-                            Layout = FormFieldModel.layout field
-                            Error = error
-                            TypeName = if typeName = "" then "anonymous" else typeName
-                            FormattedValue = (field :> IFormFieldModel<_, _>).FormattedValue
-                        }
+                    let element, kind =
+                        match field with
+                        | Input field -> View.fieldBase form field messageDispatcher (commonProps @ inputProps i pi.Name error), Kind.Input
+                        | Select field -> View.selectBase form field messageDispatcher (commonProps @ selectProps i pi.Name error) optionProps, Kind.Select
+                        | Checkbox field -> View.checkboxBase form field messageDispatcher (commonProps @ checkboxProps i pi.Name error), Kind.Checkbox
+        
+                    {
+                        Name = pi.Name
+                        Label = label
+                        Element = element
+                        LabelText = field |> FormFieldModel.label
+                        Kind = kind
+                        Layout = FormFieldModel.layout field
+                        Error = error
+                        TypeName = if typeName = "" then "anonymous" else typeName
+                        FormattedValue = (field :> IFormFieldModel<_, _>).FormattedValue
+                    }
 
-                    match field with
-                    | Input field -> {f with Element = View.fieldBase form field messageDispatcher (commonProps @ inputProps i pi.Name error); Kind = Kind.Input}
-                    | Select field -> {f with Element = View.selectBase form field messageDispatcher (commonProps @ selectProps i pi.Name error) optionProps; Kind =  Kind.Select}
-                    | Checkbox field -> {f with Element = View.checkboxBase form field messageDispatcher (commonProps @ checkboxProps i pi.Name error); Kind = Kind.Checkbox}
             ]
 
         /// <summary>Return a list of Field records with no custom properties</summary>

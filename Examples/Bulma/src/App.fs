@@ -38,53 +38,56 @@ type Model =
 type Msg = 
     | UpdateAutoForm of AutoForm
     | ValidateAutoForm
+    | Reset
 
 let transformValidation x =
     x |> Option.map (fun e -> e |> List.map(fun (k, v) -> sprintf "%s: %s" k v) |> String.concat ", ")
-    
-let init _ =
-    let autoForm = 
-        Auto.initForm {
-            Id = input {
-                value' 1
-                label' "Id"
-                disabled true
-                size 1
-            }
-            String = input {
-                raw_value (Ok "")
-                label' "A field taking a string"
-                size 5
-            }
-            FloatOption = input {
-                error "please fill me"
-                label "A float optional value" 
-                validator (fun _ v -> match v with | None -> Ok None | Some v when v < 100.0 -> Ok (Some v) | _ -> Error "The value should be < 100")
-                placeholder "please insert a value < 100"
-                tooltip
-            }
-            Checkbox = checkbox {
-                value false
-                label "A checkbox"
-            }
-            Choice = select {
-                error "please select an item"
-                values [
-                    {Key = First; Description = "first option"}
-                    {Key = Second; Description = "second option"}
-                    {Key = Third; Description = "third option"}
-                ]
-                value_label (fun x -> x.Description)
-                label "Choice"
-            }
-            ChoiceOptional = select {
-                value None
-                values (Helpers.optionValues [{|Key = 1; Value = "option 1"|}; {|Key = 2; Value = "option 2"|}])
-                value_label (fun x -> x |> Option.map (fun x -> x.Value) |> Option.defaultValue "<no choice>")
-                label "Choice optional"
-            }
 
+let createForm () = 
+    Auto.initForm {
+        Id = input {
+            value' 1
+            label' "Id"
+            disabled true
+            size 1
         }
+        String = input {
+            raw_value (Ok "")
+            label' "A field taking a string"
+            size 5
+        }
+        FloatOption = input {
+            error "please fill me"
+            label "A float optional value" 
+            validator (fun _ v -> match v with | None -> Ok None | Some v when v < 100.0 -> Ok (Some v) | _ -> Error "The value should be < 100")
+            placeholder "please insert a value < 100"
+            tooltip
+        }
+        Checkbox = checkbox {
+            value false
+            label "A checkbox"
+        }
+        Choice = select {
+            error "please select an item"
+            values [
+                {Key = First; Description = "first option"}
+                {Key = Second; Description = "second option"}
+                {Key = Third; Description = "third option"}
+            ]
+            value_label (fun x -> x.Description)
+            label "Choice"
+        }
+        ChoiceOptional = select {
+            value None
+            values (Helpers.optionValues [{|Key = 1; Value = "option 1"|}; {|Key = 2; Value = "option 2"|}])
+            value_label (fun x -> x |> Option.map (fun x -> x.Value) |> Option.defaultValue "<no choice>")
+            label "Choice optional"
+        }
+
+    }
+
+let init _ =
+    let autoForm = createForm()
 
     let model =
         {
@@ -99,6 +102,9 @@ let update msg model =
         {model with AutoForm = newForm}, Cmd.none
     | ValidateAutoForm ->
         {model with AutoFormValidationError = validate model.AutoForm |> transformValidation}, Cmd.none
+    | Reset ->
+        let newForm = createForm()
+        {model with AutoForm = newForm}, Cmd.none
 
 let view model dispatch =
     section [ClassName "section"] [
@@ -110,6 +116,7 @@ let view model dispatch =
                     h2 [ClassName "title is-5"] [str "Automatic form with Bulma styling"]
                     Auto.View.Bulma.form model.AutoForm (UpdateAutoForm >> dispatch) (Some "is-small") [
                         button [ClassName "button is-link"; OnClick (fun e -> dispatch ValidateAutoForm; e.preventDefault())] [str "Validate"]
+                        button [ClassName "button is-warning"; OnClick (fun e -> dispatch Reset; e.preventDefault())] [str "Reset"]
                     ]
                 ]
             ]
