@@ -85,6 +85,14 @@ module Parsers =
 
     let boolOption = optionParser bool
 
+    /// Try to parse a decimal number
+    let decimal (x : string) =
+        match Decimal.TryParse x with
+        | false, _ -> Error "Invalid decimal number"
+        | true, x -> Ok x
+
+    let decimalOption = optionParser decimal
+    
 /// Helpers to transform a given object to a string representation
 module Formatters =
     let string (x : string) = x
@@ -101,6 +109,8 @@ module Formatters =
 
     let bool (x : bool) =
         if x then "on" else "off"
+
+    let decimal (x : decimal) = x.ToString()
 
     let option<'t> (f : 't -> string) (x : 't option) =
         match x with 
@@ -419,6 +429,14 @@ module FormInputModel =
     let boolOptionField initialValue updater =
         create' initialValue Parsers.boolOption (Formatters.option Formatters.bool) updater
 
+    /// Construct a FormInputModel backed by a System.Decimal value
+    let decimalField initialValue updater =
+        create' initialValue Parsers.decimal Formatters.decimal updater
+
+    /// Construct a FormInputModel backed by an optional System.Double value
+    let decimalOptionField initialValue updater =
+        create' initialValue Parsers.decimalOption (Formatters.option Formatters.decimal) updater
+    
     // helpers
 
     /// Update the field's value with the given text. The validation function is not called.
@@ -836,6 +854,10 @@ module Auto =
             FormInputModel.dateTimeField (initialValue |> box |> unbox<Result<DateTimeOffset, string>>) u |> box |> i
         elif typeof<'t> = typeof<option<DateTimeOffset>> then
             FormInputModel.dateTimeOptionField (initialValue |> box |> unbox<Result<DateTimeOffset option, string>>) u |> box |> i
+        elif typeof<'t> = typeof<decimal> then
+            FormInputModel.decimalField (initialValue |> box |> unbox<Result<decimal, string>>) u |> box |> i
+        elif typeof<'t> = typeof<option<decimal>> then
+            FormInputModel.decimalOptionField (initialValue |> box |> unbox<Result<decimal option, string>>) u |> box |> i
         else
             None
 
