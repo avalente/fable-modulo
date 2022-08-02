@@ -27,6 +27,10 @@ module Parsers =
         if String.IsNullOrWhiteSpace x then Ok None
         else parser x |> Result.map Some
 
+    /// Always failing parser
+    let nullParser<'t> (x : string) : Result<'t, string> = Error "null parser"
+    let nullParserOption<'t> (x : string) : Result<'t option, string> = Error "null parser"
+
     /// Parse a string. Always successful.
     let string x = Ok x
 
@@ -641,6 +645,27 @@ module FormFieldModel =
     /// Update the form with the new field
     let updateForm form (field : FormFieldModel<_, _>) = field.UpdateForm form
 
+    /// Get the text if the underlying is of kind 'Input'
+    let text x = 
+        match x with
+        | Input x -> x.Text
+        | Select _
+        | Checkbox _ -> failwithf "Operation unsupported on this kind of field"
+
+    /// Get the values if the underlying is of kind 'Select
+    let selectValues x = 
+        match x with
+        | Select x -> x.Values
+        | Input _
+        | Checkbox _ -> failwithf "Operation unsupported on this kind of field"
+
+    /// Set the values if the underlying is of kind 'Select
+    let replaceSelectValues values x = 
+        match x with
+        | Select x -> FormSelectModel.withValues values
+        | Input _
+        | Checkbox _ -> failwithf "Operation unsupported on this kind of field"
+
 // helpers
 
 /// <summary>Extract the field's value in a pattern matching</summary>
@@ -704,6 +729,18 @@ module View =
         let inline onChange<'f> (form : 'f) (item : FormCheckboxModel<'f>) (messageDispatcher : 'f -> unit) (ev : Event) = 
             let item = {item with Value = Ok ev.Checked}
             item.UpdateForm form |> messageDispatcher
+
+    let inline defaultValue<'f, 't> (item : FormFieldModel<'f, 't>) =
+        match item with
+        | Input x -> FormInputModel.defaultValue x
+        | Select x -> FormSelectModel.defaultValue x
+        | Checkbox x -> failwithf "please use FormCheckboxModel.defaultValue explicitly"
+
+    let inline onChange<'f, 't> (form : 'f) (item : FormFieldModel<'f, 't>) (messageDispatcher : 'f -> unit) (ev : Event) =
+        match item with
+        | Input x -> FormInputModel.onChange form x messageDispatcher ev
+        | Select x -> FormSelectModel.onChange form x messageDispatcher ev
+        | Checkbox x -> FormCheckboxModel.onChange form x messageDispatcher ev
 
     /// Build a ReactElement 'input' with the given props except for 'DefaultValue', 'OnChange' and 'Placeholder' 
     /// that are set automatically
@@ -1071,8 +1108,8 @@ module Auto =
         let inline fields<'f> (form : 'f) messageDispatcher =
             fieldsBase<'f> form messageDispatcher emptyProps emptyProps [] emptyProps []
 
-        /// Return a basic form with the fields extracted from the given record
-        let inline basicForm<'f> (form : 'f) messageDispatcher (extraElements : ReactElement seq) =
+        /// Return a form with the fields extracted from the given record
+        let inline customForm<'f> (form : 'f) messageDispatcher (customization : Map<string, Field -> ReactElement>) (extraElements : ReactElement seq) =
             let fields =
                 fieldsBase<'f> form messageDispatcher (fun _ _ _ -> [TabIndex 0]) (fun _ _ _ -> [TabIndex 0]) [] (fun _ _ _ -> [TabIndex 0]) []
 
@@ -1094,13 +1131,20 @@ module Auto =
                         | Text t -> t
                         | Value -> field.FormattedValue
 
-                    div [className; if title <> "" then Title title] [
-                        field.Label
-                        field.Element
-                    ]
-                for extra in extraElements do
-                    extra
+                    match customization |> Map.tryFind field.Name with
+                    | None ->
+                        yield div [className; if title <> "" then Title title] [
+                            field.Label
+                            field.Element
+                        ]
+                    | Some f -> yield f field
+
+                yield! extraElements
             ]
+
+        /// Return a basic form with the fields extracted from the given record
+        let inline basicForm<'f> (form : 'f) messageDispatcher (extraElements : ReactElement seq) =
+            customForm<'f> form messageDispatcher Map.empty extraElements
 
         /// Bulma CSS classes and helpers
         module Bulma =
@@ -1121,7 +1165,7 @@ module Auto =
                 let Fa kind = sprintf "fas fa-%s" kind
 
             /// Return a form with bulma's classes and required structure
-            let inline form<'f> (f : 'f) messageDispatcher (sizeClass : string option) (extraElements : ReactElement seq) =
+            let inline customForm<'f> (f : 'f) messageDispatcher (sizeClass : string option) (customization : Map<string, Field -> ReactElement>) (extraElements : ReactElement seq) =
                 let inputProps idx name (error : string option) : List<IHTMLProp> = 
                     [
                         Classes.concat [
@@ -1130,10 +1174,13 @@ module Auto =
                             match sizeClass with | None -> () | Some x -> x
                         ]
                     ]
+                    
                 let labelProps : List<IHTMLProp> = [Classes.concat ["label"; match sizeClass with | None -> () | Some x -> x]]
 
                 form [Classes.concat [Classes.Form]] [
                     for field in fieldsBase<'f> f messageDispatcher inputProps emptyProps [] emptyProps labelProps do
+                        let element = customization |> Map.tryFind field.Name |> Option.map (fun f -> f field) |> Option.defaultValue field.Element
+
                         let className = 
                             [
                                 Classes.Field
@@ -1159,7 +1206,7 @@ module Auto =
                             div [Classes.concat [Classes.Control; Classes.HasIconsRight]] [
                                 match field.Kind with
                                 | Kind.Input -> 
-                                    field.Element
+                                    element
                                     span [Classes.concat [Classes.Icon; Classes.IsSmall; Classes.IsRight]] [
                                         match field.Error with
                                         | None ->
@@ -1177,11 +1224,11 @@ module Auto =
                                         ]
                                         |> Classes.concat
 
-                                    div [classes] [field.Element]
+                                    div [classes] [element]
 
                                 | Kind.Checkbox ->
                                     label [Classes.concat [Classes.Checkbox; match sizeClass with | None -> () | Some x -> x]] [
-                                        field.Element
+                                        element
                                         match field.LabelText with 
                                         | None -> () 
                                         | Some x when x.StartsWith(" ") -> str x
@@ -1194,16 +1241,30 @@ module Auto =
                             | None ->
                                 p [Classes.concat [Classes.Help; Classes.IsSuccess]] [str "\u00a0"]
                         ]
-                    for extra in extraElements do
-                        extra
+
+                    yield! extraElements
                 ]
+
+            /// Return a form with bulma's classes and required structure
+            let inline form<'f> (f : 'f) messageDispatcher (sizeClass : string option) (extraElements : ReactElement seq) =
+                customForm<'f> f messageDispatcher sizeClass Map.empty extraElements
+
 
 /// Computation expression used to build an "input" field model
 type InputBuilder() =
     ///[omit]
     member inline self.Yield<'f, 't>(_) =
         match Auto.inputField<'f, 't> (Error "please fill me") with
-        | None -> failwithf "unsupported type: '%s'" typeof<'t>.Name
+        | None -> 
+            {
+                Text = ""
+                Value = Error "please fill me"
+                Parser = Parsers.nullParser
+                Updater = fun _ _ -> failwithf "looks like you forgot to call 'initForm'"
+                Formatter = string
+                Validator = None
+                Layout = FormFieldLayout.Empty(typedefof<'t> <> typedefof<Option<_>>)
+            }
         | Some x -> x
 
     /// Set the displayed initial text of the input field
@@ -1236,6 +1297,10 @@ type InputBuilder() =
     /// Set the parser function for the field
     [<CustomOperation("parser")>]
     member inline __.Parser<'f, 't>(s : FormInputModel<'f, 't>, x) = {s with Parser = x}
+
+    /// Set the formatter function for the field
+    [<CustomOperation("formatter")>]
+    member inline __.Formatter<'f, 't>(s : FormInputModel<'f, 't>, x) = {s with Formatter = x}
 
     /// Set the field value's validator function
     [<CustomOperation("validator")>]

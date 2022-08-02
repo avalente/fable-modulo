@@ -6,6 +6,9 @@ open Elmish.React
 open Fable.React
 open Fable.React.Props
 open Fable.Modulo
+open Browser.Types
+open Browser
+
 
 type MyType =
     | First
@@ -18,6 +21,12 @@ type MyOtherType =
         Description : string
     }
 
+type MyThirdType =
+    {
+        Id : int
+        Value : string
+    }
+
 type AutoField<'t> = FormFieldModel<AutoForm, 't>
 and AutoForm =
     {
@@ -27,6 +36,7 @@ and AutoForm =
         Checkbox : AutoField<bool>
         Choice : AutoField<MyOtherType>
         ChoiceOptional : AutoField<{| Key : int; Value : string |} option>
+        Custom : AutoField<MyThirdType>
     }
 
 type Model =
@@ -83,7 +93,19 @@ let createForm () =
             value_label (fun x -> x |> Option.map (fun x -> x.Value) |> Option.defaultValue "<no choice>")
             label "Choice optional"
         }
-
+        Custom = input {
+            error "please fill me"
+            label "Custom"
+            parser (fun x -> 
+                let re = Text.RegularExpressions.Regex("(.*)?\s+(\d+)")
+                let m = re.Match x
+                if m.Success then
+                    Ok {Id = Int32.Parse m.Groups.[2].Value; Value = m.Groups.[1].Value}
+                else
+                    Error "invalid value. try a string followed by a space followed by a number, e.g. test 1"
+            )
+            formatter (fun x -> string x)
+        } 
     }
 
 let init _ =
@@ -114,7 +136,16 @@ let view model dispatch =
             div [ClassName "column"] [
                 div [ClassName "box"] [
                     h2 [ClassName "title is-5"] [str "Automatic form with Bulma styling"]
-                    Auto.View.Bulma.form model.AutoForm (UpdateAutoForm >> dispatch) (Some "is-small") [
+                    let custom =
+                        Map.empty
+                        |> Map.add "Custom" (fun (field : Auto.View.Field) ->
+                            Standard.input [
+                                ClassName "input"
+                                Props.Value (View.defaultValue model.AutoForm.Custom)
+                                Props.OnChange (View.onChange model.AutoForm model.AutoForm.Custom (UpdateAutoForm >> dispatch))
+                            ]
+                        )
+                    Auto.View.Bulma.customForm model.AutoForm (UpdateAutoForm >> dispatch) (Some "is-small") custom [
                         button [ClassName "button is-link"; OnClick (fun e -> dispatch ValidateAutoForm; e.preventDefault())] [str "Validate"]
                         button [ClassName "button is-warning"; OnClick (fun e -> dispatch Reset; e.preventDefault())] [str "Reset"]
                     ]
