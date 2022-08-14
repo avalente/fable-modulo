@@ -27,6 +27,8 @@ jobs:
       run: dotnet tool restore
     - name: Restore dependencies
       run: dotnet restore
+    - name: Show dependencies
+      run: dotnet list package --include-transitive
     - name: Build
       run: dotnet build --configuration Release /p:Version=${VERSION}
     - name: Test
