@@ -60,25 +60,31 @@ module Parsers =
 
     /// Try to parse the date part of a datetime object. Depends on the current CultureInfo.
     let date (x : string) =
-        match DateTime.TryParse x with
-        | false, _ -> Error "Invalid date"
-        | true, x -> Ok x.Date
+        try
+            match DateTime.TryParse x with
+            | false, _ -> Error "Invalid date"
+            | true, x -> Ok x.Date
+        with e -> Error e.Message
 
     let dateOption = optionParser date
 
     /// Try to parse a timespan object object. Depends on the current CultureInfo.
     let timeSpan (x : string) =
-        match TimeSpan.TryParse x with
-        | false, _ -> Error "Invalid time"
-        | true, x -> Ok x
+        try
+            match TimeSpan.TryParse x with
+            | false, _ -> Error "Invalid time"
+            | true, x -> Ok x
+        with e -> Error e.Message
 
     let timeSpanOption = optionParser timeSpan
 
     /// Try to parse a datetime with a timezone. Depends on the current CultureInfo.
     let dateTime (x : string) =
-        match DateTimeOffset.TryParse x with
-        | false, _ -> Error "Invalid datetime"
-        | true, x -> Ok x
+        try
+            match DateTimeOffset.TryParse x with
+            | false, _ -> Error "Invalid datetime"
+            | true, x -> Ok x
+        with e -> Error e.Message
 
     let dateTimeOption = optionParser dateTime
 
@@ -1109,7 +1115,7 @@ module Auto =
             fieldsBase<'f> form messageDispatcher emptyProps emptyProps [] emptyProps []
 
         /// Return a form with the fields extracted from the given record
-        let inline customForm<'f> (form : 'f) messageDispatcher (customization : Map<string, Field -> ReactElement>) (extraElements : ReactElement seq) =
+        let inline customForm<'f> (form : 'f) messageDispatcher (customization : Map<string, 'f -> Field -> ReactElement>) (extraElements : ReactElement seq) =
             let fields =
                 fieldsBase<'f> form messageDispatcher (fun _ _ _ -> [TabIndex 0]) (fun _ _ _ -> [TabIndex 0]) [] (fun _ _ _ -> [TabIndex 0]) []
 
@@ -1137,7 +1143,7 @@ module Auto =
                             field.Label
                             field.Element
                         ]
-                    | Some f -> yield f field
+                    | Some f -> yield f form field
 
                 yield! extraElements
             ]
@@ -1165,7 +1171,7 @@ module Auto =
                 let Fa kind = sprintf "fas fa-%s" kind
 
             /// Return a form with bulma's classes and required structure
-            let inline customForm<'f> (f : 'f) messageDispatcher (sizeClass : string option) (customization : Map<string, Field -> ReactElement>) (extraElements : ReactElement seq) =
+            let inline customForm<'f> (f : 'f) messageDispatcher (sizeClass : string option) (customization : Map<string, 'f -> Field -> ReactElement>) (extraElements : ReactElement seq) =
                 let inputProps idx name (error : string option) : List<IHTMLProp> = 
                     [
                         Classes.concat [
@@ -1179,7 +1185,7 @@ module Auto =
 
                 form [Classes.concat [Classes.Form]] [
                     for field in fieldsBase<'f> f messageDispatcher inputProps emptyProps [] emptyProps labelProps do
-                        let element = customization |> Map.tryFind field.Name |> Option.map (fun f -> f field) |> Option.defaultValue field.Element
+                        let element = customization |> Map.tryFind field.Name |> Option.map (fun fld -> fld f field) |> Option.defaultValue field.Element
 
                         let className = 
                             [
