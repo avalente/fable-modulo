@@ -193,7 +193,7 @@ let view model dispatch =
 
                         // this one doesn't use the helpers in View
                         Fable.React.Standard.input [
-                            Value model.Form.String.Text
+                            Props.Value model.Form.String.Text
                             OnChange (View.FormInputModel.onChange model.Form model.Form.String (UpdateForm >> dispatch))
                             AutoFocus true
                         ]

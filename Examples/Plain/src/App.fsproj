@@ -3,7 +3,7 @@
     <TargetFramework>netstandard2.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-  <!-- <Compile Include="Library.fs" /> -->
+    <Compile Include="../../../src/Fable.Modulo/Library.fs" />
     <Compile Include="App.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -13,6 +13,5 @@
     <PackageReference Include="Fable.Elmish.React" Version="3.0.1" />
     <PackageReference Include="Fable.Elmish.Debugger" Version="3.0.1" />
     <PackageReference Include="Fable.React" Version="8.0.1" />
-    <PackageReference Include="Fable.Modulo" Version="1.*" />
   </ItemGroup>
 </Project>

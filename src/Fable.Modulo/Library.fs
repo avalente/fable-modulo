@@ -931,11 +931,11 @@ module Auto =
         FormSelectModel.create<'f, 't> initialValue values labelFunction u
     
     /// Build a FormFieldModel from the given initial value, available choices and value label-generating function
-    let inline select<'f, 't> (initialValue : Result<'t, string>) (values : 't seq) (labelFunction : 't -> string) =
+    let inline select<'f, 't> (initialValue : Result<'t, string>) (values : 't seq) (labelFunction : 't -> string) : FormFieldModel<'f, 't> =
         selectRaw initialValue values labelFunction |> FormFieldModel.Select
 
     /// Build a FormFieldModel from the given initial value, available choices, value label-generating function and the label
-    let inline select'<'f, 't> (initialValue : Result<'t, string>) (values : 't seq) (labelFunction : 't -> string) fieldLabel =
+    let inline select'<'f, 't> (initialValue : Result<'t, string>) (values : 't seq) (labelFunction : 't -> string) fieldLabel : FormFieldModel<'f, 't>=
         select<'f, 't> initialValue values labelFunction |> FormFieldModel.withLabel fieldLabel
 
     /// Automatically build an "updater" function
@@ -1020,8 +1020,12 @@ module Auto =
                 Error : string option
                 /// string representation of the form model underlying value
                 FormattedValue : string
+                /// boxed form of the form model underlying value or None if error
+                BoxedValue : obj option
                 /// Name of the underlying type
                 TypeName : string
+                /// input element builder
+                ElementBuilder : IHTMLProp list -> ReactElement
             }
          
         /// CSS classes
@@ -1078,6 +1082,7 @@ module Auto =
                             Name pi.Name
                             AutoFocus (i = 0)
                             ReadOnly (field |> FormFieldModel.layout).Disabled
+                            TabIndex (if (field |> FormFieldModel.layout).Disabled then -1 else 0)
                         ]
 
                     let error = field.Error
@@ -1090,24 +1095,40 @@ module Auto =
                         else
                             t.Name
 
-                    let element, kind =
+                    let kind = 
                         match field with
-                        | Input field -> View.fieldBase form field messageDispatcher (commonProps @ inputProps i pi.Name error), Kind.Input
-                        | Select field -> View.selectBase form field messageDispatcher (commonProps @ selectProps i pi.Name error) optionProps, Kind.Select
-                        | Checkbox field -> View.checkboxBase form field messageDispatcher (commonProps @ checkboxProps i pi.Name error), Kind.Checkbox
+                        | Input _ -> Kind.Input
+                        | Select _ -> Kind.Select
+                        | Checkbox _ -> Kind.Checkbox
         
+                    let elementBuilder props =
+                        match field with
+                        | Input field -> 
+                            let allProps =
+                                List.concat [commonProps; props; inputProps i pi.Name error]
+                            View.fieldBase form field messageDispatcher allProps
+                        | Select field -> 
+                            let allProps =
+                                List.concat [commonProps; props; selectProps i pi.Name error]
+                            View.selectBase form field messageDispatcher allProps optionProps
+                        | Checkbox field -> 
+                            let allProps =
+                                List.concat [commonProps; props; checkboxProps i pi.Name error]
+                            View.checkboxBase form field messageDispatcher allProps
+
                     {
                         Name = pi.Name
                         Label = label
-                        Element = element
+                        Element = elementBuilder []
                         LabelText = field |> FormFieldModel.label
                         Kind = kind
                         Layout = FormFieldModel.layout field
                         Error = error
                         TypeName = if typeName = "" then "anonymous" else typeName
                         FormattedValue = (field :> IFormFieldModel<_, _>).FormattedValue
+                        BoxedValue = match (field :> IFormFieldModel<_, _>).FieldValue with | Error _ -> None | Ok x -> box x |> Some
+                        ElementBuilder = elementBuilder
                     }
-
             ]
 
         /// <summary>Return a list of Field records with no custom properties</summary>

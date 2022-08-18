@@ -138,7 +138,7 @@ let view model dispatch =
                     h2 [ClassName "title is-5"] [str "Automatic form with Bulma styling"]
                     let custom =
                         Map.empty
-                        |> Map.add "Custom" (fun (field : Auto.View.Field) ->
+                        |> Map.add "Custom" (fun form (field : Auto.View.Field) ->
                             Standard.input [
                                 ClassName "input"
                                 Props.Value (View.defaultValue model.AutoForm.Custom)

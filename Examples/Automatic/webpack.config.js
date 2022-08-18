@@ -6,6 +6,9 @@ var path = require("path");
 
 module.exports = {
     mode: "development",
+    resolve: {
+        modules: [path.resolve(__dirname, 'node_modules'), 'node_modules']
+    },
     entry: "./src/App.fs.js",
     output: {
         path: path.join(__dirname, "./public"),
@@ -25,4 +28,8 @@ module.exports = {
             }
         ]
     }
+}
+
+function resolve(filePath) {
+    return path.isAbsolute(filePath) ? filePath : path.join(__dirname, filePath);
 }
