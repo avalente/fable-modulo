@@ -37,7 +37,7 @@ jobs:
       run: dotnet pack --configuration Release /p:Version=${VERSION} --output release
     - name: Publish
       run: dotnet publish
-      - name: Documentation
+    - name: Documentation
       run: 'mkdir release/docs && dotnet fsdocs build --clean --output release/docs --properties Configuration=Release Version=${VERSION} --parameters root https://avalente.github.io/ fsdocs-license-link https://github.com/avalente/fable-modulo/blob/master/src/Fable.Modulo/LICENSE.txt fsdocs-collection-name-link https://avalente.github.io/ --strict  --fscoptions \"-r $((for f in $(ls -1 src/Fable.Modulo/bin/Debug/netstandard2.0/publish/*.dll); do echo "$f"; done) | tr "\n" ",")\"'
     - uses: actions/upload-artifact@v3
       with:
