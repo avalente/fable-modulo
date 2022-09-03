@@ -38,7 +38,7 @@ jobs:
     - name: Publish
       run: dotnet publish
     - name: Documentation
-      run: 'mkdir release/docs && dotnet fsdocs build --clean --output release/docs --properties Configuration=Release Version=${VERSION} --parameters root https://avalente.github.io/ fsdocs-license-link https://github.com/avalente/fable-modulo/blob/master/src/Fable.Modulo/LICENSE.txt fsdocs-collection-name-link https://avalente.github.io/ --strict  --fscoptions \"-r $((for f in $(ls -1 src/Fable.Modulo/bin/Debug/netstandard2.0/publish/*.dll); do echo "$f"; done) | tr "\n" ",")\"'
+      run: 'mkdir release/docs && dotnet fsdocs build --clean --output release/docs --properties Configuration=Release Version=${VERSION} --parameters root https://avalente.github.io/fable-modulo fsdocs-license-link https://github.com/avalente/fable-modulo/blob/master/src/Fable.Modulo/LICENSE.txt fsdocs-collection-name-link https://avalente.github.io/fable-modulo/ --strict  --fscoptions \"-r $((for f in $(ls -1 src/Fable.Modulo/bin/Debug/netstandard2.0/publish/*.dll); do echo "$f"; done) | tr "\n" ",")\"'
     - uses: actions/upload-artifact@v3
       with:
         name: package
@@ -53,6 +53,8 @@ jobs:
         deploy_key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
         external_repository: avalente/avalente.github.io
         publish_dir: ./release/docs/
+        destination_dir: ./fable-modulo
+        keep_files: true
     - name: Push package
       run: dotnet nuget push release/Fable.Modulo.${VERSION}.nupkg --api-key ${NUGET_KEY} --source https://api.nuget.org/v3/index.json
       env:
