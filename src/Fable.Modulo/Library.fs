@@ -706,24 +706,32 @@ module View =
         let inline defaultValue<'f, 't> (item : FormInputModel<'f, 't>) =
             item.Text
 
+        let inline onChangeRaw<'f, 't> (form : 'f) (item : FormInputModel<'f, 't>) (messageDispatcher : 'f -> unit) (value : string) = 
+            FormInputModel.updateForm form item value |> messageDispatcher
+
         /// OnChange handler for the input element
-        let inline onChange<'f, 't> (form : 'f) (item : FormInputModel<'f, 't>) (messageDispatcher : 'f -> unit) (ev : Event) = FormInputModel.updateForm form item ev.Value |> messageDispatcher
+        let inline onChange<'f, 't> (form : 'f) (item : FormInputModel<'f, 't>) (messageDispatcher : 'f -> unit) (ev : Event) = 
+            onChangeRaw<'f, 't> form item messageDispatcher ev.Value
 
     module FormSelectModel =
         let inline defaultValue<'f, 't> (item : FormSelectModel<'f, 't>) =
             match item.Value with 
             | Ok x -> item.KeyFunction x
             | Error e -> ""
-            
-        /// OnChange handler for the select element
-        let inline onChange<'f, 't> (form : 'f) (item : FormSelectModel<'f, 't>) (messageDispatcher : 'f -> unit) (ev : Event) = 
+
+        let inline onChangeRaw<'f, 't> (form : 'f) (item : FormSelectModel<'f, 't>) (messageDispatcher : 'f -> unit) (value : string) = 
             let value = 
-                if String.IsNullOrWhiteSpace ev.Value && item.AddEmptySelection then
+                if String.IsNullOrWhiteSpace value && item.AddEmptySelection then
                     Error item.EmptyErrorMessage
                 else
-                    item.Values |> Array.find (fun x -> item.KeyFunction x = ev.Value) |> Ok
+                    item.Values |> Array.find (fun x -> item.KeyFunction x = value) |> Ok
             let item = {item with Value = value}
             item.UpdateForm form |> messageDispatcher
+                
+        
+        /// OnChange handler for the select element
+        let inline onChange<'f, 't> (form : 'f) (item : FormSelectModel<'f, 't>) (messageDispatcher : 'f -> unit) (ev : Event) = 
+            onChangeRaw<'f, 't> form item messageDispatcher ev.Value
 
     module FormCheckboxModel =
         let inline defaultValue<'f> (item : FormCheckboxModel<'f>) =
@@ -731,7 +739,7 @@ module View =
             | Ok x -> x 
             | Error _ -> false
 
-        /// OnChange handler for the select element
+        /// OnChange handler for the checkbox element
         let inline onChange<'f> (form : 'f) (item : FormCheckboxModel<'f>) (messageDispatcher : 'f -> unit) (ev : Event) = 
             let item = {item with Value = Ok ev.Checked}
             item.UpdateForm form |> messageDispatcher
@@ -1026,6 +1034,10 @@ module Auto =
                 TypeName : string
                 /// input element builder
                 ElementBuilder : IHTMLProp list -> ReactElement
+                /// OnChange handler
+                OnChange : string -> unit
+                /// OnChange handler for checkbox
+                OnChangeCheckbox : bool -> unit
             }
          
         /// CSS classes
@@ -1116,6 +1128,22 @@ module Auto =
                                 List.concat [commonProps; props; checkboxProps i pi.Name error]
                             View.checkboxBase form field messageDispatcher allProps
 
+                    let onChange value =
+                        match field with
+                        | Input field ->
+                            View.FormInputModel.onChangeRaw form field messageDispatcher value
+                        | Select field ->
+                            View.FormSelectModel.onChangeRaw form field messageDispatcher value
+                        | Checkbox field -> failwithf "OnChange not supported for checkbox, please use OnChangeCheckbox"
+
+                    let onChangeCheckbox value =
+                        match field with
+                        | Checkbox field -> 
+                            let field = {field with Value = Ok value} 
+                            field.UpdateForm form |> messageDispatcher
+                        | Input _ -> failwithf "The field kind is 'Input', please use OnChange instead"
+                        | Select _ -> failwithf "The field kind is 'Select', please use OnChange instead"
+
                     {
                         Name = pi.Name
                         Label = label
@@ -1128,6 +1156,8 @@ module Auto =
                         FormattedValue = (field :> IFormFieldModel<_, _>).FormattedValue
                         BoxedValue = match (field :> IFormFieldModel<_, _>).FieldValue with | Error _ -> None | Ok x -> box x |> Some
                         ElementBuilder = elementBuilder
+                        OnChange = onChange
+                        OnChangeCheckbox = onChangeCheckbox
                     }
             ]
 

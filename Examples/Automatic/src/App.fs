@@ -109,9 +109,28 @@ let view model dispatch =
                             ]
 
                             div [] [
+                                let f = fields |> List.find (fun x -> x.Name = "String")
+
+                                f.Label
+                                str ": "
+                                Fable.React.Standard.input [
+                                    Placeholder "this field accepts integers"
+                                    OnChange (fun ev -> 
+                                        let v =
+                                            match Int32.TryParse ev.Value with
+                                            | false, _ -> f.FormattedValue
+                                            | true, x -> $"{x}%%"
+                                        f.OnChange v
+                                    )
+                                    Fable.React.Props.Value (f.FormattedValue.TrimEnd([|'%'|]))
+                                ]
+                            ]
+
+                            div [] [
                                 button [OnClick (fun e -> dispatch ValidateAutoForm; e.preventDefault())] [str "Validate"]
                             ]
                         ]
+
                     ]
                 ]
             ]
